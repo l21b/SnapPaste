@@ -589,7 +589,7 @@
     }
 
     :global(:root) {
-        --bg-primary: rgba(255, 255, 255, 0.75);
+        --bg-primary: rgba(255, 255, 255, 0.60);
         --bg-secondary: rgba(248, 249, 250, 0.8);
         --bg-hover: rgba(243, 244, 246, 0.75);
         --text-primary: #000000;
@@ -608,9 +608,9 @@
     }
 
     :global([data-theme="dark"]) {
-        --bg-primary: rgba(30, 30, 40, 0.75);
+        --bg-primary: rgba(30, 30, 40, 0.65);
         --bg-secondary: rgba(40, 40, 55, 0.7);
-        --bg-hover: rgba(55, 55, 75, 0.6);
+        --bg-hover: rgba(82, 82, 95, 0.6);
         --text-primary: #f9fafb;
         --text-secondary: #9ca3af;
         --text-tertiary: #a1a7b0;
