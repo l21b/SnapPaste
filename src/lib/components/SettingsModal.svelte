@@ -201,8 +201,12 @@
     }
 
     $effect(() => {
+        // 显式跟踪 open 和 settings 的变化
         if (open) {
-            const parsed = parseHotkey(settings.hotkey);
+            // 确保读取 settings 的所有属性以跟踪依赖
+            const _theme = settings.theme;
+            const _hotkey = settings.hotkey;
+            const parsed = parseHotkey(_hotkey);
             draft = {
                 ...settings,
                 hotkey: formatHotkey(parsed.modifier, parsed.key)
@@ -346,7 +350,7 @@
         align-items: center;
         justify-content: center;
         padding: 6px;
-        background: rgba(17, 24, 39, 0.45);
+        background: rgba(0, 0, 0, 0.5);
         z-index: 10;
     }
 
@@ -361,8 +365,8 @@
         flex-direction: column;
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
-        border-radius: 12px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+        border-radius: 16px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
         overflow: hidden;
     }
 
@@ -386,7 +390,7 @@
         border: none;
         border-radius: 6px;
         background: transparent;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
         cursor: pointer;
         font-size: 18px;
         line-height: 1;
@@ -418,7 +422,7 @@
 
     .field-label {
         font-size: 12px;
-        color: var(--text-secondary);
+        color: var(--text-primary);
     }
 
     .field small {
@@ -442,8 +446,13 @@
         padding: 0 8px;
         font-size: 12px;
         color: var(--text-primary);
-        background: var(--bg-primary);
+        background: var(--bg-secondary);
         outline: none;
+    }
+
+    select option {
+        background: var(--bg-primary);
+        color: var(--text-primary);
     }
 
     input:focus,
@@ -558,10 +567,15 @@
         color: #fff;
     }
 
-    .ghost-btn:hover,
+    .ghost-btn:hover {
+        transform: translateY(-1px);
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+    }
+
     .primary-btn:hover {
         transform: translateY(-1px);
-        filter: brightness(0.98);
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
     }
 

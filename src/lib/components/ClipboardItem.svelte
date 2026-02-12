@@ -116,10 +116,10 @@
 <style>
     .clipboard-item {
         position: relative;
-        padding: 10px 12px 12px 12px;
+        padding: 12px 16px 14px 16px;
         border-bottom: 1px solid var(--border-color);
         cursor: pointer;
-        transition: background-color 0.15s;
+        transition: all 0.15s ease;
     }
 
     .clipboard-item:hover {
@@ -141,11 +141,13 @@
     }
 
     .item-type {
-        padding: 2px 6px;
+        padding: 3px 8px;
         background: var(--accent-light);
         color: var(--accent-color);
-        border-radius: 4px;
+        border-radius: 6px;
         font-weight: 500;
+        font-size: 10px;
+        letter-spacing: 0.02em;
     }
 
     .item-source {
@@ -212,7 +214,7 @@
         border-radius: 6px;
         opacity: 0;
         transition: opacity 0.16s, background-color 0.16s, color 0.16s, transform 0.16s;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
     }
 
     .favorite-btn {
@@ -231,7 +233,7 @@
         border-radius: 6px;
         opacity: 0;
         transition: opacity 0.16s, background-color 0.16s, color 0.16s, transform 0.16s;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
     }
 
     .favorite-btn svg {
@@ -280,7 +282,7 @@
     .delete-btn svg {
         width: 16px;
         height: 16px;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
     }
 
     .favorite-btn:hover {

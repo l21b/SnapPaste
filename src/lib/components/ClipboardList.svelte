@@ -61,6 +61,7 @@
         min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
+        background: var(--bg-primary);
     }
 
     .loading,
@@ -69,21 +70,22 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 40px 20px;
+        padding: 48px 24px;
         color: var(--text-secondary);
         text-align: center;
     }
 
     .empty svg {
-        width: 48px;
-        height: 48px;
-        margin-bottom: 12px;
-        opacity: 0.5;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 16px;
+        opacity: 0.4;
     }
 
     .empty p {
-        margin: 0 0 4px 0;
+        margin: 0 0 6px 0;
         font-size: 14px;
+        font-weight: 500;
         color: var(--text-primary);
     }
 
@@ -94,13 +96,13 @@
     }
 
     .spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid var(--border-color);
+        width: 28px;
+        height: 28px;
+        border: 2.5px solid var(--border-color);
         border-top-color: var(--accent-color);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
     }
 
     @keyframes spin {

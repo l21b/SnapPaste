@@ -66,22 +66,23 @@
         align-items: center;
         gap: 8px;
         width: 100%;
-        height: 36px;
-        padding: 0 10px;
+        height: 38px;
+        padding: 0 12px;
         border: 1px solid var(--border-color);
-        border-radius: 8px;
+        border-radius: 10px;
         background: var(--bg-primary);
+        transition: all 0.2s ease;
     }
 
     .input-wrap:focus-within {
         border-color: var(--accent-color);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent);
+        box-shadow: 0 0 0 3px var(--accent-light);
     }
 
     .input-wrap svg {
         width: 16px;
         height: 16px;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
         flex-shrink: 0;
     }
 

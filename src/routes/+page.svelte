@@ -91,7 +91,9 @@
             window.localStorage.setItem('clipper-theme', theme);
         }
         if (theme === 'system') {
+            // system 主题：移除 data-theme 属性，使用 CSS @media (prefers-color-scheme) 自动检测
             root.removeAttribute('data-theme');
+            root.setAttribute('data-theme', 'auto');
             return;
         }
         root.setAttribute('data-theme', theme);
@@ -197,19 +199,18 @@
     }
 
     function saveSettings(nextSettings: Settings) {
-        const previous = { ...settings };
+        // 先应用主题设置（不管后端保存是否成功）
         settings = { ...nextSettings };
         applyTheme(settings.theme);
         settingsOpen = false;
         focusSearchInput(0);
+
+        // 保存到后端（不重新加载设置，因为我们已经有了最新值）
         void invoke('save_app_settings', { settings: nextSettings })
             .then(async () => {
-            void loadSettings();
             await loadHistory();
             })
             .catch((error) => {
-                settings = previous;
-                applyTheme(settings.theme);
                 console.error('Failed to save settings:', error);
             });
     }
@@ -385,6 +386,17 @@
                 console.error('Failed to notify frontend ready:', error);
             });
 
+        // 监听系统主题变化
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleThemeChange = () => {
+            // 只有当前是系统主题模式时才更新
+            const savedTheme = window.localStorage.getItem('clipper-theme');
+            if (savedTheme === 'system' || savedTheme === 'auto') {
+                applyTheme('system');
+            }
+        };
+        mediaQuery.addEventListener('change', handleThemeChange);
+
         // 监听由后端启动，这里仅负责刷新 UI
         refreshInterval = setInterval(refreshHistory, 900);
         loadSettings();
@@ -394,7 +406,7 @@
             })
             .catch(() => {});
         listen('open-settings', async () => {
-            await loadSettings();
+            // 不重新加载设置，使用内存中已有的最新值
             settingsOpen = true;
         }).then((unlisten) => {
             unlistenOpenSettings = unlisten;
@@ -569,6 +581,7 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
+        background: transparent;
     }
 
     :global(*) {
@@ -576,37 +589,63 @@
     }
 
     :global(:root) {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f3f4f6;
-        --bg-hover: #f9fafb;
-        --text-primary: #111827;
-        --text-secondary: #6b7280;
-        --text-tertiary: #9ca3af;
-        --border-color: #e5e7eb;
+        --bg-primary: rgba(255, 255, 255, 0.75);
+        --bg-secondary: rgba(248, 249, 250, 0.8);
+        --bg-hover: rgba(243, 244, 246, 0.75);
+        --text-primary: #000000;
+        --text-secondary: #ffffff;
+        --text-tertiary: #6b7280;
+        --border-color: rgba(209, 213, 219, 0.7);
         --accent-color: #2563eb;
-        --accent-light: #eff6ff;
+        --accent-light: rgba(37, 99, 235, 0.12);
         --danger-color: #ef4444;
-        --danger-light: #fef2f2;
-        --scrollbar-track: #eef2f7;
-        --scrollbar-thumb: #c6cdd8;
+        --danger-light: rgba(239, 68, 68, 0.12);
+        --scrollbar-track: rgba(238, 242, 247, 0.5);
+        --scrollbar-thumb: rgba(198, 205, 216, 0.7);
         --scrollbar-thumb-hover: #aeb7c4;
+        --glass-border: rgba(255, 255, 255, 0.8);
+        --glass-shadow: rgba(0, 0, 0, 0.15);
     }
 
     :global([data-theme="dark"]) {
-        --bg-primary: #1f2937;
-        --bg-secondary: #374151;
-        --bg-hover: #4b5563;
+        --bg-primary: rgba(30, 30, 40, 0.75);
+        --bg-secondary: rgba(40, 40, 55, 0.7);
+        --bg-hover: rgba(55, 55, 75, 0.6);
         --text-primary: #f9fafb;
         --text-secondary: #9ca3af;
-        --text-tertiary: #6b7280;
-        --border-color: #4b5563;
+        --text-tertiary: #a1a7b0;
+        --border-color: rgba(55, 65, 81, 0.5);
         --accent-color: #60a5fa;
-        --accent-light: #1e3a5f;
+        --accent-light: rgba(96, 165, 250, 0.2);
         --danger-color: #f87171;
-        --danger-light: #7f1d1d;
-        --scrollbar-track: #303745;
-        --scrollbar-thumb: #596275;
+        --danger-light: rgba(248, 113, 113, 0.2);
+        --scrollbar-track: rgba(40, 40, 55, 0.3);
+        --scrollbar-thumb: rgba(89, 98, 117, 0.5);
         --scrollbar-thumb-hover: #727e95;
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    /* 跟随系统主题 */
+    @media (prefers-color-scheme: dark) {
+        :global([data-theme="auto"]) {
+            --bg-primary: rgba(30, 30, 40, 0.75);
+            --bg-secondary: rgba(40, 40, 55, 0.7);
+            --bg-hover: rgba(55, 55, 75, 0.6);
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #a1a7b0;
+            --border-color: rgba(55, 65, 81, 0.5);
+            --accent-color: #60a5fa;
+            --accent-light: rgba(96, 165, 250, 0.2);
+            --danger-color: #f87171;
+            --danger-light: rgba(248, 113, 113, 0.2);
+            --scrollbar-track: rgba(40, 40, 55, 0.3);
+            --scrollbar-thumb: rgba(89, 98, 117, 0.5);
+            --scrollbar-thumb-hover: #727e95;
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-shadow: rgba(0, 0, 0, 0.3);
+        }
     }
 
     :global(*) {
@@ -639,22 +678,26 @@
         height: 100vh;
         background: var(--bg-primary);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px var(--glass-shadow);
+        overflow: hidden;
     }
 
     .header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
+        padding: 14px 18px;
         border-bottom: 1px solid var(--border-color);
         background: var(--bg-primary);
     }
 
     h1 {
         margin: 0;
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
         color: var(--text-primary);
+        letter-spacing: -0.01em;
     }
 
     .header-actions {
@@ -666,20 +709,20 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
         padding: 0;
-        border: none;
-        background: transparent;
+        border: 1px solid transparent;
+        background: var(--bg-secondary);
         cursor: pointer;
-        border-radius: 6px;
-        transition: background-color 0.18s, transform 0.18s, box-shadow 0.18s;
+        border-radius: 10px;
+        transition: all 0.2s ease;
     }
 
     .refresh-btn:hover {
         background: var(--bg-hover);
-        transform: translateY(-1px) scale(1.04);
-        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+        border-color: var(--border-color);
+        transform: translateY(-1px);
     }
 
     .add-favorite-btn:hover {
@@ -695,25 +738,25 @@
     }
 
     .refresh-btn.danger:hover svg {
-        color: var(--danger-color);
+        color: var(--danger-color) !important;
     }
 
     .refresh-btn svg {
         width: 18px;
         height: 18px;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
     }
 
     .search-container {
-        padding: 12px 16px;
+        padding: 14px 18px;
         border-bottom: 1px solid var(--border-color);
+        background: var(--bg-secondary);
     }
 
     .list-container {
         flex: 1;
         min-height: 0;
         display: flex;
-        overflow: hidden;
     }
 
     .favorite-toggle.active {
@@ -759,7 +802,7 @@
         align-items: center;
         justify-content: center;
         padding: 16px;
-        background: rgba(17, 24, 39, 0.5);
+        background: rgba(0, 0, 0, 0.3);
         z-index: 50;
     }
 
@@ -767,10 +810,10 @@
         width: min(92vw, 360px);
         max-width: 100%;
         background: var(--bg-primary);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 14px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--glass-border);
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 16px 48px var(--glass-shadow);
     }
 
     .confirm-modal h3 {
@@ -782,7 +825,7 @@
     .confirm-modal p {
         margin: 0;
         font-size: 13px;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
         line-height: 1.4;
     }
 
@@ -796,15 +839,16 @@
     .cancel-btn,
     .danger-btn,
     .primary-btn {
-        height: 32px;
-        padding: 0 12px;
+        height: 34px;
+        padding: 0 14px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
-        background: var(--bg-primary);
+        background: var(--bg-secondary);
         color: var(--text-primary);
         cursor: pointer;
         font-size: 13px;
-        transition: transform 0.16s, filter 0.16s, box-shadow 0.16s;
+        font-weight: 500;
+        transition: all 0.2s ease;
     }
 
     .danger-btn {
@@ -820,10 +864,13 @@
     }
 
     .cancel-btn:hover,
-    .danger-btn:hover,
+    .danger-btn:hover {
+        transform: translateY(-1px);
+        background: var(--bg-hover);
+    }
+
     .primary-btn:hover {
         transform: translateY(-1px);
-        filter: brightness(0.98);
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
     }
 
