@@ -1,6 +1,6 @@
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::tray;
@@ -48,8 +48,16 @@ pub fn register_from_settings_or_default<R: Runtime>(app: &AppHandle<R>) -> Resu
     let settings = crate::database::get_settings().map_err(|e| e.to_string())?;
     match register_hotkey(app, &settings.hotkey) {
         Ok(_) => Ok(()),
-        Err(_err) => {
-            register_hotkey(app, DEFAULT_SHORTCUT).map(|_| ())
+        Err(err) => {
+            // 设置的快捷键失败，尝试默认快捷键
+            match register_hotkey(app, DEFAULT_SHORTCUT) {
+                Ok(_) => Ok(()),
+                Err(_) => {
+                    // 两个都失败，通知前端
+                    let _ = app.emit("hotkey-register-failed", &err);
+                    Ok(())
+                }
+            }
         }
     }
 }

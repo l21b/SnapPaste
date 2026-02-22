@@ -19,15 +19,18 @@
     let searchKeyword = $state('');
     let favoritesOnly = $state(false);
     let searchTimeout: ReturnType<typeof setTimeout>;
-    let refreshInterval: ReturnType<typeof setInterval>;
+    let historyRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let unlistenOpenSettings: UnlistenFn | null = null;
     let unlistenOpenAbout: UnlistenFn | null = null;
     let unlistenMainWindowOpened: UnlistenFn | null = null;
+    let unlistenHistoryChanged: UnlistenFn | null = null;
+    let unlistenHotkeyFailed: UnlistenFn | null = null;
     let settingsOpen = $state(false);
     let aboutOpen = $state(false);
     let appVersion = $state('0.1.0');
     let clearConfirmOpen = $state(false);
     let addFavoriteOpen = $state(false);
+    let hotkeyErrorOpen = $state(false);
     let favoriteInput = $state('');
     let addFavoriteSaving = $state(false);
     let searchBarRef: { focusInput: () => void } | null = null;
@@ -147,6 +150,16 @@
         } catch (error) {
             console.error('Failed to refresh:', error);
         }
+    }
+
+    function scheduleRefreshHistory(delayMs: number = 120) {
+        if (historyRefreshDebounceTimer) {
+            clearTimeout(historyRefreshDebounceTimer);
+        }
+        historyRefreshDebounceTimer = setTimeout(() => {
+            historyRefreshDebounceTimer = null;
+            void refreshHistory();
+        }, delayMs);
     }
 
     async function searchHistory(keyword: string) {
@@ -398,8 +411,7 @@
         };
         mediaQuery.addEventListener('change', handleThemeChange);
 
-        // 监听由后端启动，这里仅负责刷新 UI
-        refreshInterval = setInterval(refreshHistory, 900);
+        // 监听由后端事件驱动刷新 UI
         loadSettings();
         getVersion()
             .then((v) => {
@@ -434,6 +446,22 @@
         }).catch((error) => {
             console.error('Failed to listen main-window-opened:', error);
         });
+        listen('history-changed', () => {
+            scheduleRefreshHistory(120);
+        }).then((unlisten) => {
+            unlistenHistoryChanged = unlisten;
+        }).catch((error) => {
+            console.error('Failed to listen history-changed:', error);
+        });
+
+        listen<string>('hotkey-register-failed', (event) => {
+            console.error('Hotkey registration failed:', event.payload);
+            hotkeyErrorOpen = true;
+        }).then((unlisten) => {
+            unlistenHotkeyFailed = unlisten;
+        }).catch((error) => {
+            console.error('Failed to listen hotkey-register-failed:', error);
+        });
 
         void refreshHistory();
         focusSearchInput(16);
@@ -448,8 +476,15 @@
             if (unlistenMainWindowOpened) {
                 unlistenMainWindowOpened();
             }
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
+            if (unlistenHistoryChanged) {
+                unlistenHistoryChanged();
+            }
+            if (unlistenHotkeyFailed) {
+                unlistenHotkeyFailed();
+            }
+            if (historyRefreshDebounceTimer) {
+                clearTimeout(historyRefreshDebounceTimer);
+                historyRefreshDebounceTimer = null;
             }
         };
     });
@@ -575,6 +610,25 @@
                         取消
                     </button>
                     <button class="danger-btn" onclick={confirmClearAll}>{clearConfirmAction()}</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if hotkeyErrorOpen}
+        <div class="confirm-backdrop">
+            <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-label="快捷键错误">
+                <h3>快捷键注册失败</h3>
+                <p>默认快捷键 Ctrl+Shift+V 被其他程序占用，请关闭占用程序后重启应用，或在设置中更换快捷键。</p>
+                <div class="confirm-actions">
+                    <button
+                        class="primary-btn"
+                        onclick={() => {
+                            hotkeyErrorOpen = false;
+                        }}
+                    >
+                        确定
+                    </button>
                 </div>
             </div>
         </div>

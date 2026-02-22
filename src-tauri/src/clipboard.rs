@@ -1,12 +1,15 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use std::hash::{Hash, Hasher};
 use arboard::{Clipboard, ImageData};
+#[cfg(target_os = "windows")]
+use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 use enigo::{Enigo, Key, KeyboardControllable};
 use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageFormat};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::CloseHandle;
 #[cfg(target_os = "windows")]
@@ -19,6 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindow
 use crate::models::ClipboardRecord;
 
 static MONITORING: AtomicBool = AtomicBool::new(false);
+static MONITOR_SESSION_ID: AtomicU64 = AtomicU64::new(0);
 /// 忽略下一次剪贴板变化（用于复制操作时避免重复记录）
 static IGNORE_NEXT_CHANGE: AtomicBool = AtomicBool::new(false);
 static LAST_IMAGE_RECORD_MS: AtomicU64 = AtomicU64::new(0);
@@ -35,6 +39,10 @@ const PASTE_SETTLE_MS_IMAGE: u64 = 16;
 const PASTE_KEY_STEP_MS: u64 = 2;
 const FOCUS_RELEASE_TIMEOUT_MS: u64 = 80;
 const FOCUS_RELEASE_POLL_MS: u64 = 4;
+#[cfg(target_os = "windows")]
+const EVENT_MONITOR_RETRY_MIN_MS: u64 = 300;
+#[cfg(target_os = "windows")]
+const EVENT_MONITOR_RETRY_MAX_MS: u64 = 3000;
 
 fn now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -289,15 +297,16 @@ pub fn get_source_app() -> String {
     "Unknown".to_string()
 }
 
-/// 启动剪贴板监听
-#[tauri::command]
-pub async fn start_monitoring(_app: AppHandle) -> Result<(), String> {
-    if MONITORING.swap(true, Ordering::SeqCst) {
-        return Ok(());
-    }
+fn next_monitor_session_id() -> u64 {
+    MONITOR_SESSION_ID.fetch_add(1, Ordering::SeqCst).saturating_add(1)
+}
 
-    // 启动时先记录当前剪贴板基线，避免“程序刚启动就新增一条历史”。
-    let startup_signature = Clipboard::new().ok().and_then(|mut clipboard| {
+fn is_monitor_session_active(session_id: u64) -> bool {
+    MONITORING.load(Ordering::SeqCst) && MONITOR_SESSION_ID.load(Ordering::SeqCst) == session_id
+}
+
+fn build_startup_signature() -> Option<String> {
+    Clipboard::new().ok().and_then(|mut clipboard| {
         if ENABLE_IMAGE_RECORDING {
             if let Ok(image) = clipboard.get_image() {
                 return Some(image_signature(image.width, image.height, image.bytes.as_ref()));
@@ -307,99 +316,197 @@ pub async fn start_monitoring(_app: AppHandle) -> Result<(), String> {
             return Some(format!("text:{}", text));
         }
         None
-    });
-    let last_signature = std::sync::Mutex::new(startup_signature);
+    })
+}
 
-    std::thread::spawn(move || {
-        let mut poll_ms: u64 = 500;
-        while MONITORING.load(Ordering::SeqCst) {
-            if PASTE_IN_PROGRESS.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(120));
-                continue;
-            }
-            thread::sleep(Duration::from_millis(poll_ms));
+fn emit_history_changed(app: &AppHandle) {
+    let _ = app.emit("history-changed", ());
+}
 
-            let mut clipboard = match Clipboard::new() {
-                Ok(c) => c,
-                Err(_) => {
-                    poll_ms = 800;
-                    continue;
+fn process_clipboard_change(
+    last_signature: &Mutex<Option<String>>,
+    _source: &str,
+    app: &AppHandle,
+) {
+    if PASTE_IN_PROGRESS.load(Ordering::SeqCst) {
+        return;
+    }
+
+    let mut clipboard = match Clipboard::new() {
+        Ok(c) => c,
+        Err(_) => {
+            return;
+        }
+    };
+
+    if ENABLE_IMAGE_RECORDING {
+        if let Ok(image) = clipboard.get_image() {
+            let raw = image.bytes.as_ref();
+            let signature = image_signature(image.width, image.height, raw);
+            let should_ignore = IGNORE_NEXT_CHANGE.swap(false, Ordering::SeqCst);
+            let changed = if let Ok(mut last) = last_signature.lock() {
+                if *last == Some(signature.clone()) {
+                    false
+                } else {
+                    *last = Some(signature);
+                    true
                 }
+            } else {
+                false
             };
 
-            if ENABLE_IMAGE_RECORDING {
-                if let Ok(image) = clipboard.get_image() {
-                    let raw = image.bytes.as_ref();
-                    let signature = image_signature(image.width, image.height, raw);
-                    let should_ignore = IGNORE_NEXT_CHANGE.swap(false, Ordering::SeqCst);
-                    let changed = {
-                        let mut last = last_signature.lock().unwrap();
-                        if *last == Some(signature.clone()) {
-                            false
-                        } else {
-                            *last = Some(signature);
-                            true
-                        }
-                    };
+            if changed && !should_ignore {
+                if raw.len() > MAX_IMAGE_BYTES {
+                    return;
+                }
 
-                    if changed && !should_ignore {
-                        if raw.len() > MAX_IMAGE_BYTES {
-                            poll_ms = 1400;
-                            continue;
-                        }
+                let now = now_ms();
+                let last = LAST_IMAGE_RECORD_MS.load(Ordering::SeqCst);
+                if now.saturating_sub(last) < MIN_IMAGE_RECORD_INTERVAL_MS {
+                    return;
+                }
 
-                        let now = now_ms();
-                        let last = LAST_IMAGE_RECORD_MS.load(Ordering::SeqCst);
-                        if now.saturating_sub(last) < MIN_IMAGE_RECORD_INTERVAL_MS {
-                            poll_ms = 1400;
-                            continue;
-                        }
-
-                        match build_image_record(image.width, image.height, raw) {
-                            Ok(record) => {
-                                if crate::database::add_record(record).is_ok() {
-                                    LAST_IMAGE_RECORD_MS.store(now, Ordering::SeqCst);
-                                }
-                            }
-                            Err(_err) => {}
-                        }
-                        poll_ms = 1300;
-                    } else {
-                        // 图片未变化时拉长轮询间隔，避免重复读取大图导致高 CPU / 内存抖动
-                        poll_ms = 3000;
+                if let Ok(record) = build_image_record(image.width, image.height, raw) {
+                    if crate::database::add_record(record).is_ok() {
+                        LAST_IMAGE_RECORD_MS.store(now, Ordering::SeqCst);
+                        emit_history_changed(app);
                     }
-                    continue;
                 }
             }
+            return;
+        }
+    }
 
-            if let Ok(text) = clipboard.get_text() {
-                // 过滤掉只包含空白字符的内容
-                if text.trim().is_empty() {
-                    continue;
-                }
-                let signature = format!("text:{}", text);
-                let should_ignore = IGNORE_NEXT_CHANGE.swap(false, Ordering::SeqCst);
-                let changed = {
-                    let mut last = last_signature.lock().unwrap();
-                    if *last == Some(signature.clone()) {
-                        false
+    if let Ok(text) = clipboard.get_text() {
+        if text.trim().is_empty() {
+            return;
+        }
+
+        let signature = format!("text:{}", text);
+        let should_ignore = IGNORE_NEXT_CHANGE.swap(false, Ordering::SeqCst);
+        let changed = if let Ok(mut last) = last_signature.lock() {
+            if *last == Some(signature.clone()) {
+                false
+            } else {
+                *last = Some(signature);
+                true
+            }
+        } else {
+            false
+        };
+
+        if changed && !should_ignore {
+            let record = build_text_record(text);
+            if crate::database::add_record(record).is_ok() {
+                emit_history_changed(app);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_polling_loop(last_signature: Arc<Mutex<Option<String>>>, session_id: u64, app: AppHandle) {
+    while is_monitor_session_active(session_id) {
+        if PASTE_IN_PROGRESS.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(120));
+            continue;
+        }
+
+        thread::sleep(Duration::from_millis(500));
+        if !is_monitor_session_active(session_id) {
+            break;
+        }
+        process_clipboard_change(&last_signature, "poll", &app);
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct ClipboardEventHandler {
+    last_signature: Arc<Mutex<Option<String>>>,
+    session_id: u64,
+    app: AppHandle,
+}
+
+#[cfg(target_os = "windows")]
+impl ClipboardHandler for ClipboardEventHandler {
+    fn on_clipboard_change(&mut self) -> CallbackResult {
+        if !is_monitor_session_active(self.session_id) {
+            return CallbackResult::Stop;
+        }
+
+        process_clipboard_change(&self.last_signature, "event", &self.app);
+        CallbackResult::Next
+    }
+
+    fn on_clipboard_error(
+        &mut self,
+        _error: std::io::Error,
+    ) -> CallbackResult {
+        if !is_monitor_session_active(self.session_id) {
+            CallbackResult::Stop
+        } else {
+            CallbackResult::Next
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_event_driven_monitor(
+    last_signature: Arc<Mutex<Option<String>>>,
+    session_id: u64,
+    app: AppHandle,
+) {
+    thread::spawn(move || {
+        let mut retry_delay_ms = EVENT_MONITOR_RETRY_MIN_MS;
+
+        while is_monitor_session_active(session_id) {
+            let handler = ClipboardEventHandler {
+                last_signature: last_signature.clone(),
+                session_id,
+                app: app.clone(),
+            };
+
+            match Master::new(handler) {
+                Ok(mut master) => {
+                    retry_delay_ms = EVENT_MONITOR_RETRY_MIN_MS;
+
+                    if master.run().is_err() {
                     } else {
-                        *last = Some(signature);
-                        true
+                        break;
                     }
-                };
-
-                if changed && !should_ignore {
-                    let record = build_text_record(text);
-                    let _ = crate::database::add_record(record);
                 }
-                poll_ms = 500;
-                continue;
+                Err(_) => {}
             }
 
-            poll_ms = 800;
+            if !is_monitor_session_active(session_id) {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(retry_delay_ms));
+            retry_delay_ms = (retry_delay_ms.saturating_mul(2)).min(EVENT_MONITOR_RETRY_MAX_MS);
         }
     });
+}
+
+/// 启动剪贴板监听
+#[tauri::command]
+pub async fn start_monitoring(app: AppHandle) -> Result<(), String> {
+    if MONITORING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let session_id = next_monitor_session_id();
+    let last_signature = Arc::new(Mutex::new(build_startup_signature()));
+
+    #[cfg(target_os = "windows")]
+    {
+        spawn_event_driven_monitor(last_signature, session_id, app);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        thread::spawn(move || run_polling_loop(last_signature, session_id, app));
+    }
 
     Ok(())
 }
@@ -408,6 +515,7 @@ pub async fn start_monitoring(_app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn stop_monitoring() -> Result<(), String> {
     MONITORING.store(false, Ordering::SeqCst);
+    let _ = next_monitor_session_id();
     Ok(())
 }
 

@@ -280,12 +280,8 @@ pub fn run() {
 
             // Create system tray
             let handle = app.handle();
-            if let Err(e) = tray::create_tray(handle) {
-                eprintln!("failed to create tray: {}", e);
-            }
-            if let Err(e) = hotkey::register_from_settings_or_default(handle) {
-                eprintln!("failed to register hotkey: {}", e);
-            }
+            let _ = tray::create_tray(handle);
+            let _ = hotkey::register_from_settings_or_default(handle);
             let _ = autostart::sync_from_settings(handle);
 
             // Start clipboard monitoring automatically

@@ -100,7 +100,6 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 Image::new_owned(rgba.into_raw(), width, height)
             }
             Err(e) => {
-                eprintln!("failed to decode tray icon: {}", e);
                 // 返回错误，使用 std::io::Error
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e).into());
             }

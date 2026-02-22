@@ -308,7 +308,7 @@ pub fn search_history(keyword: &str, limit: i32) -> Result<Vec<ClipboardRecord>,
                 COALESCE(source_app, '') as source_app,
                 created_at
          FROM clipboard_history
-         WHERE content LIKE ?1 OR source_app LIKE ?1
+         WHERE content LIKE ?1
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
          LIMIT ?2"
     )?;
@@ -408,7 +408,7 @@ pub fn search_favorite_history(keyword: &str, limit: i32) -> Result<Vec<Clipboar
                 created_at
          FROM clipboard_history
          WHERE COALESCE(is_favorite, 0) = 1
-           AND (content LIKE ?1 OR source_app LIKE ?1)
+           AND content LIKE ?1
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
          LIMIT ?2"
     )?;
