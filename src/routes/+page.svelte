@@ -584,7 +584,7 @@
             <div class="confirm-modal" role="dialog" aria-modal="true" aria-label="关于">
                 <h3>关于 SnapPaste</h3>
                 <p>版本：v{appVersion}</p>
-                <p>作者：Jiaxin</p>
+                <p>作者：21b</p>
                 <div class="confirm-actions">
                     <button class="primary-btn" onclick={() => (aboutOpen = false)}>知道了</button>
                 </div>
