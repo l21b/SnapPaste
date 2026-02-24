@@ -14,3 +14,4 @@ vite.config.ts.timestamp-*
 snappaste.db
 /.claude
 /.vscode
+rename.ps1
