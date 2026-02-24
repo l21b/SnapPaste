@@ -3,24 +3,22 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use rusqlite::{Connection, OptionalExtension, Result, params};
 use crate::models::{ClipboardRecord, Settings};
 
-const DB_FILE: &str = "clipper.db";
+const DB_FILE: &str = "snappaste.db";
 pub const MIN_MENU_WIDTH: i32 = 280;
 pub const MIN_MENU_HEIGHT: i32 = 430;
 static DB_CONNECTION: OnceLock<Mutex<Connection>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
-fn legacy_windows_db_path() -> Option<PathBuf> {
-    std::env::var("APPDATA")
+fn preferred_windows_db_path() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA")
         .ok()
-        .map(|data_dir| PathBuf::from(data_dir).join("Clipper").join(DB_FILE))
+        .map(|data_dir| PathBuf::from(data_dir).join("SnapPaste").join(DB_FILE))
 }
 
 #[cfg(target_os = "windows")]
 fn get_db_path() -> PathBuf {
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(parent) = exe_path.parent() {
-            return parent.join(DB_FILE);
-        }
+    if let Some(path) = preferred_windows_db_path() {
+        return path;
     }
 
     // Fallback for unusual runtime environments.
@@ -44,18 +42,6 @@ fn open_db_connection() -> Result<Connection, rusqlite::Error> {
     // 确保目录存在
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // One-time migration from legacy APPDATA location.
-        if !path.exists() {
-            if let Some(old_path) = legacy_windows_db_path() {
-                if old_path.exists() && old_path != path {
-                    let _ = std::fs::copy(old_path, &path);
-                }
-            }
-        }
     }
 
     let conn = Connection::open(path)?;
