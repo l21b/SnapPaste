@@ -1,25 +1,25 @@
-use std::borrow::Cow;
-#[cfg(target_os = "windows")]
-use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-#[cfg(target_os = "windows")]
-use std::sync::atomic::AtomicPtr;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-use std::hash::{Hash, Hasher};
 use arboard::{Clipboard, ImageData};
 #[cfg(target_os = "windows")]
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 use enigo::{Enigo, Key, KeyboardControllable};
 use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageFormat};
+use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
+#[cfg(target_os = "windows")]
+use std::ptr;
+#[cfg(target_os = "windows")]
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::CloseHandle;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Threading::{
-    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -63,12 +63,7 @@ fn encode_rgba_to_png(width: usize, height: usize, rgba: &[u8]) -> Result<Vec<u8
     let mut out = Vec::new();
     let encoder = PngEncoder::new(&mut out);
     encoder
-        .write_image(
-            rgba,
-            width as u32,
-            height as u32,
-            ColorType::Rgba8.into(),
-        )
+        .write_image(rgba, width as u32, height as u32, ColorType::Rgba8.into())
         .map_err(|e| e.to_string())?;
     Ok(out)
 }
@@ -123,7 +118,11 @@ fn normalize_image_for_storage<'a>(
 fn build_image_record(width: usize, height: usize, rgba: &[u8]) -> Result<ClipboardRecord, String> {
     let (normalized_width, normalized_height, normalized_rgba, scaled) =
         normalize_image_for_storage(width, height, rgba);
-    let png_bytes = encode_rgba_to_png(normalized_width, normalized_height, normalized_rgba.as_ref())?;
+    let png_bytes = encode_rgba_to_png(
+        normalized_width,
+        normalized_height,
+        normalized_rgba.as_ref(),
+    )?;
     if png_bytes.len() > MAX_ENCODED_IMAGE_BYTES {
         return Err(format!(
             "encoded image too large: {} bytes > {} bytes",
@@ -136,7 +135,10 @@ fn build_image_record(width: usize, height: usize, rgba: &[u8]) -> Result<Clipbo
         id: 0,
         content_type: "image".to_string(),
         content: if scaled {
-            format!("图片 {}x{} (缩放自 {}x{})", normalized_width, normalized_height, width, height)
+            format!(
+                "图片 {}x{} (缩放自 {}x{})",
+                normalized_width, normalized_height, width, height
+            )
         } else {
             format!("图片 {}x{}", width, height)
         },
@@ -271,9 +273,7 @@ fn force_restore_focus(hwnd: isize) -> bool {
 
 /// 检测是否为 URL
 pub fn is_url(text: &str) -> bool {
-    text.starts_with("http://")
-        || text.starts_with("https://")
-        || text.starts_with("www.")
+    text.starts_with("http://") || text.starts_with("https://") || text.starts_with("www.")
 }
 
 /// 获取来源应用
@@ -332,7 +332,9 @@ pub fn get_source_app() -> String {
 }
 
 fn next_monitor_session_id() -> u64 {
-    MONITOR_SESSION_ID.fetch_add(1, Ordering::SeqCst).saturating_add(1)
+    MONITOR_SESSION_ID
+        .fetch_add(1, Ordering::SeqCst)
+        .saturating_add(1)
 }
 
 fn is_monitor_session_active(session_id: u64) -> bool {
@@ -343,7 +345,11 @@ fn build_startup_signature() -> Option<String> {
     Clipboard::new().ok().and_then(|mut clipboard| {
         if ENABLE_IMAGE_RECORDING {
             if let Ok(image) = clipboard.get_image() {
-                return Some(image_signature(image.width, image.height, image.bytes.as_ref()));
+                return Some(image_signature(
+                    image.width,
+                    image.height,
+                    image.bytes.as_ref(),
+                ));
             }
         }
         if let Ok(text) = clipboard.get_text() {
@@ -472,10 +478,7 @@ impl ClipboardHandler for ClipboardEventHandler {
         CallbackResult::Next
     }
 
-    fn on_clipboard_error(
-        &mut self,
-        _error: std::io::Error,
-    ) -> CallbackResult {
+    fn on_clipboard_error(&mut self, _error: std::io::Error) -> CallbackResult {
         if !is_monitor_session_active(self.session_id) {
             CallbackResult::Stop
         } else {

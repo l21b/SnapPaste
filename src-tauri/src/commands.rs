@@ -1,15 +1,13 @@
-use tauri::State;
-use tauri::AppHandle;
+use crate::database::{
+    add_record, clear_favorite_history, clear_history, clear_non_favorite_history, delete_record,
+    favorite_exists, get_all_favorite_history, get_favorite_history, get_history, get_settings,
+    save_settings, search_favorite_history, search_history, set_record_favorite, set_record_pinned,
+};
+use crate::models::{ClipboardRecord, Settings};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::models::{ClipboardRecord, Settings};
-use crate::database::{
-    get_history, search_history, add_record, delete_record,
-    clear_history, get_settings, save_settings,
-    get_favorite_history, search_favorite_history, set_record_favorite, set_record_pinned,
-    get_all_favorite_history, favorite_exists,
-    clear_non_favorite_history, clear_favorite_history,
-};
+use tauri::AppHandle;
+use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FavoriteTransferItem {
@@ -106,8 +104,7 @@ fn import_favorites_from_payload(payload: &str) -> Result<i32, String> {
 
 #[tauri::command]
 pub fn init_db() -> Result<(), String> {
-    crate::database::init_database()
-        .map_err(|e| e.to_string())
+    crate::database::init_database().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -116,8 +113,7 @@ pub fn get_history_records(
     limit: i32,
     offset: i32,
 ) -> Result<Vec<ClipboardRecord>, String> {
-    let records = get_history(limit, offset)
-        .map_err(|e| e.to_string())?;
+    let records = get_history(limit, offset).map_err(|e| e.to_string())?;
     Ok(records)
 }
 
@@ -127,8 +123,7 @@ pub fn search_records(
     keyword: String,
     limit: i32,
 ) -> Result<Vec<ClipboardRecord>, String> {
-    let records = search_history(&keyword, limit)
-        .map_err(|e| e.to_string())?;
+    let records = search_history(&keyword, limit).map_err(|e| e.to_string())?;
     Ok(records)
 }
 
@@ -138,8 +133,7 @@ pub fn get_favorite_records(
     limit: i32,
     offset: i32,
 ) -> Result<Vec<ClipboardRecord>, String> {
-    let records = get_favorite_history(limit, offset)
-        .map_err(|e| e.to_string())?;
+    let records = get_favorite_history(limit, offset).map_err(|e| e.to_string())?;
     Ok(records)
 }
 
@@ -149,8 +143,7 @@ pub fn search_favorite_records(
     keyword: String,
     limit: i32,
 ) -> Result<Vec<ClipboardRecord>, String> {
-    let records = search_favorite_history(&keyword, limit)
-        .map_err(|e| e.to_string())?;
+    let records = search_favorite_history(&keyword, limit).map_err(|e| e.to_string())?;
     Ok(records)
 }
 
@@ -204,10 +197,7 @@ pub fn add_custom_favorite_record(
 }
 
 #[tauri::command]
-pub fn delete_clipboard_record(
-    _state: State<'_, crate::AppState>,
-    id: i64,
-) -> Result<(), String> {
+pub fn delete_clipboard_record(_state: State<'_, crate::AppState>, id: i64) -> Result<(), String> {
     delete_record(id).map_err(|e| e.to_string())?;
     Ok(())
 }

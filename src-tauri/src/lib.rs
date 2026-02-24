@@ -1,26 +1,24 @@
-mod models;
-mod database;
-mod commands;
-mod clipboard;
-mod tray;
-mod hotkey;
 mod autostart;
+mod clipboard;
+mod commands;
+mod database;
+mod hotkey;
+mod models;
+mod tray;
 
+use commands::{
+    add_clipboard_record, add_custom_favorite_record, clear_clipboard_history,
+    clear_favorite_items, clear_history_only, delete_clipboard_record, export_favorites_json,
+    export_favorites_to_path, get_app_settings, get_favorite_records, get_history_records,
+    import_favorites_from_path, import_favorites_json, init_db, save_app_settings,
+    search_favorite_records, search_records, set_frontend_ready, set_record_favorite_state,
+    set_record_pinned_state, suspend_auto_hide,
+};
+use models::Settings;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
-use models::Settings;
-use commands::{
-    init_db, get_history_records, search_records,
-    get_favorite_records, search_favorite_records,
-    add_clipboard_record, add_custom_favorite_record,
-    delete_clipboard_record, clear_clipboard_history, clear_history_only, clear_favorite_items,
-    set_record_favorite_state, set_record_pinned_state,
-    export_favorites_json, import_favorites_json,
-    export_favorites_to_path, import_favorites_from_path,
-    get_app_settings, save_app_settings, suspend_auto_hide, set_frontend_ready,
-};
 
 static LAST_GEOMETRY_EVENT_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_MAIN_WINDOW_SHOW_MS: AtomicU64 = AtomicU64::new(0);
@@ -120,7 +118,8 @@ fn clamp_main_window_to_work_area(window: &tauri::Window) {
     let min_x = work_area.position.x;
     let min_y = work_area.position.y;
     let max_x = (work_area.position.x + work_area.size.width as i32 - size.width as i32).max(min_x);
-    let max_y = (work_area.position.y + work_area.size.height as i32 - size.height as i32).max(min_y);
+    let max_y =
+        (work_area.position.y + work_area.size.height as i32 - size.height as i32).max(min_y);
     let clamped_x = position.x.clamp(min_x, max_x);
     let clamped_y = position.y.clamp(min_y, max_y);
 
@@ -168,7 +167,9 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(AppState { settings: Settings::default() })
+        .manage(AppState {
+            settings: Settings::default(),
+        })
         .invoke_handler(tauri::generate_handler![
             init_db,
             get_history_records,
@@ -212,13 +213,17 @@ pub fn run() {
                 // 使用 PhysicalSize 设置最小尺寸
                 let min_width = (280.0 * scale_factor) as u32;
                 let min_height = (430.0 * scale_factor) as u32;
-                let min_size = tauri::Size::Physical(tauri::PhysicalSize::new(min_width, min_height));
+                let min_size =
+                    tauri::Size::Physical(tauri::PhysicalSize::new(min_width, min_height));
                 let _ = main_window.set_min_size(Some(min_size));
 
                 // 恢复保存的窗口尺寸 - 需要先显示窗口才能设置尺寸
                 if let Ok(Some((width, height))) = database::get_window_size() {
                     let _ = main_window.show();
-                    let size = tauri::Size::Physical(tauri::PhysicalSize::new(width as u32, height as u32));
+                    let size = tauri::Size::Physical(tauri::PhysicalSize::new(
+                        width as u32,
+                        height as u32,
+                    ));
                     let _ = main_window.set_size(size);
                     let _ = main_window.hide();
                 } else {
@@ -279,7 +284,8 @@ pub fn run() {
                 }
 
                 // 缩放/移动窗口会触发短暂失焦，忽略该时间窗内的自动隐藏。
-                let elapsed = now_ms().saturating_sub(LAST_GEOMETRY_EVENT_MS.load(Ordering::SeqCst));
+                let elapsed =
+                    now_ms().saturating_sub(LAST_GEOMETRY_EVENT_MS.load(Ordering::SeqCst));
                 if elapsed < GEOMETRY_FOCUS_GUARD_MS {
                     let delay = GEOMETRY_FOCUS_GUARD_MS.saturating_sub(elapsed) + 16;
                     schedule_hide_recheck(window.clone(), delay);

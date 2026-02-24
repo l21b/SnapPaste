@@ -17,7 +17,7 @@ pub struct Settings {
     pub hotkey_modifiers: u32,
     pub hotkey_key: u32,
     pub hotkey: String, // global shortcut like "Ctrl+Shift+V"
-    pub theme: String, // "light" | "dark" | "system"
+    pub theme: String,  // "light" | "dark" | "system"
     pub keep_days: i32,
     pub max_records: i32,
     pub auto_start: bool,

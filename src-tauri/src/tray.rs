@@ -1,11 +1,11 @@
+use crate::database;
+use image::load_from_memory;
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    image::Image,
     AppHandle, Emitter, Manager, PhysicalPosition, Runtime,
 };
-use image::load_from_memory;
-use crate::database;
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
@@ -36,7 +36,10 @@ pub fn show_main_window_near_cursor<R: Runtime>(app: &AppHandle<R>) -> tauri::Re
                             let top = rect.position.y as f64;
                             let right = left + rect.size.width as f64;
                             let bottom = top + rect.size.height as f64;
-                            cursor.x >= left && cursor.x < right && cursor.y >= top && cursor.y < bottom
+                            cursor.x >= left
+                                && cursor.x < right
+                                && cursor.y >= top
+                                && cursor.y < bottom
                         })
                     })
                     .or_else(|| window.current_monitor().ok().flatten())
@@ -127,7 +130,8 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     if let Some(window) = app.get_webview_window("main") {
                         if let Ok(inner) = window.inner_size() {
                             // 保存内框尺寸（内容区域大小）
-                            let _ = database::save_window_size(inner.width as i32, inner.height as i32);
+                            let _ =
+                                database::save_window_size(inner.width as i32, inner.height as i32);
                         }
                     }
                     app.exit(0);
@@ -140,7 +144,8 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             if let tauri::tray::TrayIconEvent::Click {
                 button: tauri::tray::MouseButton::Left,
                 ..
-            } = event {
+            } = event
+            {
                 let app_handle = tray.app_handle();
                 let _ = show_main_window(app_handle);
             }

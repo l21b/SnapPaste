@@ -1,7 +1,7 @@
+use crate::models::{ClipboardRecord, Settings};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
-use rusqlite::{Connection, OptionalExtension, Result, params};
-use crate::models::{ClipboardRecord, Settings};
 
 const DB_FILE: &str = "snappaste.db";
 static DB_CONNECTION: OnceLock<Mutex<Connection>> = OnceLock::new();
@@ -88,17 +88,11 @@ fn ensure_settings_columns(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
 
     if !columns.iter().any(|c| c == "window_width") {
-        conn.execute(
-            "ALTER TABLE settings ADD COLUMN window_width INTEGER",
-            [],
-        )?;
+        conn.execute("ALTER TABLE settings ADD COLUMN window_width INTEGER", [])?;
     }
 
     if !columns.iter().any(|c| c == "window_height") {
-        conn.execute(
-            "ALTER TABLE settings ADD COLUMN window_height INTEGER",
-            [],
-        )?;
+        conn.execute("ALTER TABLE settings ADD COLUMN window_height INTEGER", [])?;
     }
 
     Ok(())
@@ -254,10 +248,7 @@ pub fn init_database() -> Result<()> {
     )?;
 
     // 初始化默认设置
-    conn.execute(
-        "INSERT OR IGNORE INTO settings (id) VALUES (1)",
-        [],
-    )?;
+    conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", [])?;
 
     ensure_settings_columns(&conn)?;
     ensure_history_columns(&conn)?;
@@ -276,22 +267,23 @@ pub fn get_history(limit: i32, offset: i32) -> Result<Vec<ClipboardRecord>, rusq
                 created_at
          FROM clipboard_history
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
-         LIMIT ?1 OFFSET ?2"
+         LIMIT ?1 OFFSET ?2",
     )?;
 
-    let records = stmt.query_map(params![limit, offset], |row| {
-        Ok(ClipboardRecord {
-            id: row.get(0)?,
-            content_type: row.get(1)?,
-            content: row.get(2)?,
-            image_data: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? > 0,
-            is_pinned: row.get::<_, i32>(5)? > 0,
-            source_app: row.get(6)?,
-            created_at: row.get(7)?,
-        })
-    })?
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records = stmt
+        .query_map(params![limit, offset], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                content: row.get(2)?,
+                image_data: row.get(3)?,
+                is_favorite: row.get::<_, i32>(4)? > 0,
+                is_pinned: row.get::<_, i32>(5)? > 0,
+                source_app: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(records)
 }
@@ -309,27 +301,31 @@ pub fn search_history(keyword: &str, limit: i32) -> Result<Vec<ClipboardRecord>,
          FROM clipboard_history
          WHERE content LIKE ?1
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
 
-    let records = stmt.query_map(params![pattern, limit], |row| {
-        Ok(ClipboardRecord {
-            id: row.get(0)?,
-            content_type: row.get(1)?,
-            content: row.get(2)?,
-            image_data: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? > 0,
-            is_pinned: row.get::<_, i32>(5)? > 0,
-            source_app: row.get(6)?,
-            created_at: row.get(7)?,
-        })
-    })?
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records = stmt
+        .query_map(params![pattern, limit], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                content: row.get(2)?,
+                image_data: row.get(3)?,
+                is_favorite: row.get::<_, i32>(4)? > 0,
+                is_pinned: row.get::<_, i32>(5)? > 0,
+                source_app: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(records)
 }
 
-pub fn get_favorite_history(limit: i32, offset: i32) -> Result<Vec<ClipboardRecord>, rusqlite::Error> {
+pub fn get_favorite_history(
+    limit: i32,
+    offset: i32,
+) -> Result<Vec<ClipboardRecord>, rusqlite::Error> {
     let conn = lock_db_connection()?;
 
     let mut stmt = conn.prepare(
@@ -341,22 +337,23 @@ pub fn get_favorite_history(limit: i32, offset: i32) -> Result<Vec<ClipboardReco
          FROM clipboard_history
          WHERE COALESCE(is_favorite, 0) = 1
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
-         LIMIT ?1 OFFSET ?2"
+         LIMIT ?1 OFFSET ?2",
     )?;
 
-    let records = stmt.query_map(params![limit, offset], |row| {
-        Ok(ClipboardRecord {
-            id: row.get(0)?,
-            content_type: row.get(1)?,
-            content: row.get(2)?,
-            image_data: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? > 0,
-            is_pinned: row.get::<_, i32>(5)? > 0,
-            source_app: row.get(6)?,
-            created_at: row.get(7)?,
-        })
-    })?
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records = stmt
+        .query_map(params![limit, offset], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                content: row.get(2)?,
+                image_data: row.get(3)?,
+                is_favorite: row.get::<_, i32>(4)? > 0,
+                is_pinned: row.get::<_, i32>(5)? > 0,
+                source_app: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(records)
 }
@@ -372,27 +369,31 @@ pub fn get_all_favorite_history() -> Result<Vec<ClipboardRecord>, rusqlite::Erro
                 created_at
          FROM clipboard_history
          WHERE COALESCE(is_favorite, 0) = 1
-         ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC"
+         ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC",
     )?;
 
-    let records = stmt.query_map([], |row| {
-        Ok(ClipboardRecord {
-            id: row.get(0)?,
-            content_type: row.get(1)?,
-            content: row.get(2)?,
-            image_data: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? > 0,
-            is_pinned: row.get::<_, i32>(5)? > 0,
-            source_app: row.get(6)?,
-            created_at: row.get(7)?,
-        })
-    })?
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records = stmt
+        .query_map([], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                content: row.get(2)?,
+                image_data: row.get(3)?,
+                is_favorite: row.get::<_, i32>(4)? > 0,
+                is_pinned: row.get::<_, i32>(5)? > 0,
+                source_app: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(records)
 }
 
-pub fn search_favorite_history(keyword: &str, limit: i32) -> Result<Vec<ClipboardRecord>, rusqlite::Error> {
+pub fn search_favorite_history(
+    keyword: &str,
+    limit: i32,
+) -> Result<Vec<ClipboardRecord>, rusqlite::Error> {
     let conn = lock_db_connection()?;
     let pattern = format!("%{}%", keyword);
 
@@ -406,22 +407,23 @@ pub fn search_favorite_history(keyword: &str, limit: i32) -> Result<Vec<Clipboar
          WHERE COALESCE(is_favorite, 0) = 1
            AND content LIKE ?1
          ORDER BY COALESCE(is_pinned, 0) DESC, created_at DESC
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
 
-    let records = stmt.query_map(params![pattern, limit], |row| {
-        Ok(ClipboardRecord {
-            id: row.get(0)?,
-            content_type: row.get(1)?,
-            content: row.get(2)?,
-            image_data: row.get(3)?,
-            is_favorite: row.get::<_, i32>(4)? > 0,
-            is_pinned: row.get::<_, i32>(5)? > 0,
-            source_app: row.get(6)?,
-            created_at: row.get(7)?,
-        })
-    })?
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let records = stmt
+        .query_map(params![pattern, limit], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                content: row.get(2)?,
+                image_data: row.get(3)?,
+                is_favorite: row.get::<_, i32>(4)? > 0,
+                is_pinned: row.get::<_, i32>(5)? > 0,
+                source_app: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(records)
 }
@@ -522,7 +524,7 @@ pub fn get_record_by_id(id: i64) -> Result<Option<ClipboardRecord>, rusqlite::Er
                 created_at
          FROM clipboard_history
          WHERE id = ?1
-         LIMIT 1"
+         LIMIT 1",
     )?;
 
     let mut rows = stmt.query(params![id])?;
