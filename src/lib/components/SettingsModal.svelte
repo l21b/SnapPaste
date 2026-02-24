@@ -358,11 +358,11 @@
 
     .settings-modal {
         /* 主窗口最小 300x400 时保持可用，内容区只允许纵向滚动 */
-        width: min(92vw, 360px);
-        min-width: 272px;
+        width: min(92vw, 260px);
+        min-width: 240px;
         max-width: 100%;
-        height: min(360px, calc(100vh - 12px));
-        min-height: 320px;
+        height: min(380px, calc(100vh - 12px));
+        min-height: 280px;
         display: flex;
         flex-direction: column;
         background: var(--bg-primary);
