@@ -5,6 +5,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, Runtime,
 };
 use image::load_from_memory;
+use crate::database;
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
@@ -122,6 +123,13 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     let _ = app.emit("open-about", ());
                 }
                 "quit" => {
+                    // 保存窗口尺寸
+                    if let Some(window) = app.get_webview_window("main") {
+                        if let Ok(inner) = window.inner_size() {
+                            // 保存内框尺寸（内容区域大小）
+                            let _ = database::save_window_size(inner.width as i32, inner.height as i32);
+                        }
+                    }
                     app.exit(0);
                 }
                 _ => {}

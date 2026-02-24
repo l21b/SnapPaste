@@ -16,7 +16,5 @@ export interface Settings {
     theme: 'light' | 'dark' | 'system';
     keep_days: number;
     max_records: number;
-    menu_width: number;
-    menu_height: number;
     auto_start: boolean;
 }

@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "SnapPaste",
-        "width": 300,
-        "height": 450,
+        "width": 264,
+        "height": 421,
         "visible": false,
         "decorations": false,
         "transparent": true,

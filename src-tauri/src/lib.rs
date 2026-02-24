@@ -7,7 +7,6 @@ mod hotkey;
 mod autostart;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -26,18 +25,11 @@ use commands::{
 static LAST_GEOMETRY_EVENT_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_MAIN_WINDOW_SHOW_MS: AtomicU64 = AtomicU64::new(0);
 static AUTO_HIDE_SUSPEND_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
-static WINDOW_SIZE_SAVE_PENDING: AtomicBool = AtomicBool::new(false);
-static LAST_WINDOW_RESIZE_MS: AtomicU64 = AtomicU64::new(0);
 static FRONTEND_READY: AtomicBool = AtomicBool::new(false);
 static PENDING_SHOW_NEAR_CURSOR: AtomicBool = AtomicBool::new(false);
-static PENDING_WINDOW_SIZE: OnceLock<Mutex<Option<(i32, i32)>>> = OnceLock::new();
 const GEOMETRY_FOCUS_GUARD_MS: u64 = 120;
 const SHOW_GEOMETRY_SUPPRESS_MS: u64 = 260;
 const CURSOR_NEAR_WINDOW_MARGIN_PX: f64 = 8.0;
-
-fn pending_window_size() -> &'static Mutex<Option<(i32, i32)>> {
-    PENDING_WINDOW_SIZE.get_or_init(|| Mutex::new(None))
-}
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -151,39 +143,6 @@ fn schedule_hide_recheck(window: tauri::Window, delay_ms: u64) {
     });
 }
 
-fn schedule_window_size_persist(width: i32, height: i32) {
-    LAST_WINDOW_RESIZE_MS.store(now_ms(), Ordering::SeqCst);
-    if let Ok(mut slot) = pending_window_size().lock() {
-        *slot = Some((width, height));
-    }
-
-    if WINDOW_SIZE_SAVE_PENDING
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return;
-    }
-
-    // 延迟保存：等待 500ms 防抖，确保用户停止调整后再保存
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-
-        // 先从 Slot 里把数据拿走（锁定并取出）
-        let current = pending_window_size()
-            .lock()
-            .ok()
-            .and_then(|mut slot| slot.take());
-
-        // 拿走数据后立即释放标志位，这样如果接下来有新的 Resize，它能立刻启动新线程
-        WINDOW_SIZE_SAVE_PENDING.store(false, Ordering::SeqCst);
-
-        // 执行耗时的数据库 IO
-        if let Some((width, height)) = current {
-            let _ = database::save_menu_size(width, height);
-        }
-    });
-}
-
 pub struct AppState {
     pub settings: Settings,
 }
@@ -246,21 +205,24 @@ pub fn run() {
             let _ = database::init_database();
 
             if let Some(main_window) = app.get_webview_window("main") {
-                let _ = main_window.hide();
                 let _ = main_window.set_skip_taskbar(true);
 
-                let min_size = tauri::Size::Logical(tauri::LogicalSize::new(
-                    database::MIN_MENU_WIDTH as f64,
-                    database::MIN_MENU_HEIGHT as f64,
-                ));
+                let scale_factor = main_window.scale_factor().unwrap_or(1.0);
+
+                // 使用 PhysicalSize 设置最小尺寸
+                let min_width = (280.0 * scale_factor) as u32;
+                let min_height = (430.0 * scale_factor) as u32;
+                let min_size = tauri::Size::Physical(tauri::PhysicalSize::new(min_width, min_height));
                 let _ = main_window.set_min_size(Some(min_size));
 
-                if let Ok(settings) = database::get_settings() {
-                    let width = settings.menu_width.max(database::MIN_MENU_WIDTH) as f64;
-                    let height = settings.menu_height.max(database::MIN_MENU_HEIGHT) as f64;
-                    let _ = main_window.set_size(tauri::Size::Logical(
-                        tauri::LogicalSize::new(width, height),
-                    ));
+                // 恢复保存的窗口尺寸 - 需要先显示窗口才能设置尺寸
+                if let Ok(Some((width, height))) = database::get_window_size() {
+                    let _ = main_window.show();
+                    let size = tauri::Size::Physical(tauri::PhysicalSize::new(width as u32, height as u32));
+                    let _ = main_window.set_size(size);
+                    let _ = main_window.hide();
+                } else {
+                    let _ = main_window.hide();
                 }
             }
 
@@ -290,12 +252,11 @@ pub fn run() {
                 }
                 clamp_main_window_to_work_area(window);
             }
-            tauri::WindowEvent::Resized(size) => {
+            tauri::WindowEvent::Resized(_size) => {
                 if window.label() == "main" && should_track_geometry_event() {
                     LAST_GEOMETRY_EVENT_MS.store(now_ms(), Ordering::SeqCst);
                 }
                 if window.label() == "main" {
-                    schedule_window_size_persist(size.width as i32, size.height as i32);
                     clamp_main_window_to_work_area(window);
                 }
             }

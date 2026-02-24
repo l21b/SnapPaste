@@ -20,8 +20,6 @@ pub struct Settings {
     pub theme: String, // "light" | "dark" | "system"
     pub keep_days: i32,
     pub max_records: i32,
-    pub menu_width: i32,
-    pub menu_height: i32,
     pub auto_start: bool,
 }
 
@@ -34,8 +32,6 @@ impl Default for Settings {
             theme: "system".to_string(),
             keep_days: 30,
             max_records: 500,
-            menu_width: 400,
-            menu_height: 500,
             auto_start: false,
         }
     }

@@ -4,8 +4,6 @@ use rusqlite::{Connection, OptionalExtension, Result, params};
 use crate::models::{ClipboardRecord, Settings};
 
 const DB_FILE: &str = "snappaste.db";
-pub const MIN_MENU_WIDTH: i32 = 280;
-pub const MIN_MENU_HEIGHT: i32 = 430;
 static DB_CONNECTION: OnceLock<Mutex<Connection>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
@@ -82,23 +80,23 @@ fn ensure_settings_columns(conn: &Connection) -> Result<(), rusqlite::Error> {
         )?;
     }
 
-    if !columns.iter().any(|c| c == "menu_width") {
-        conn.execute(
-            "ALTER TABLE settings ADD COLUMN menu_width INTEGER DEFAULT 400",
-            [],
-        )?;
-    }
-
-    if !columns.iter().any(|c| c == "menu_height") {
-        conn.execute(
-            "ALTER TABLE settings ADD COLUMN menu_height INTEGER DEFAULT 500",
-            [],
-        )?;
-    }
-
     if !columns.iter().any(|c| c == "auto_start") {
         conn.execute(
             "ALTER TABLE settings ADD COLUMN auto_start INTEGER DEFAULT 0",
+            [],
+        )?;
+    }
+
+    if !columns.iter().any(|c| c == "window_width") {
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN window_width INTEGER",
+            [],
+        )?;
+    }
+
+    if !columns.iter().any(|c| c == "window_height") {
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN window_height INTEGER",
             [],
         )?;
     }
@@ -142,8 +140,6 @@ fn sanitize_settings(settings: &Settings) -> Settings {
         theme: settings.theme.clone(),
         keep_days: settings.keep_days.max(0),
         max_records: settings.max_records.max(0),
-        menu_width: settings.menu_width.max(MIN_MENU_WIDTH),
-        menu_height: settings.menu_height.max(MIN_MENU_HEIGHT),
         auto_start: settings.auto_start,
     }
 }
@@ -157,8 +153,6 @@ fn get_settings_from_conn(conn: &Connection) -> Result<Settings, rusqlite::Error
             theme,
             keep_days,
             max_records,
-            menu_width,
-            menu_height,
             auto_start
          FROM settings WHERE id = 1",
     )?;
@@ -172,9 +166,7 @@ fn get_settings_from_conn(conn: &Connection) -> Result<Settings, rusqlite::Error
             theme: row.get(3)?,
             keep_days: row.get(4)?,
             max_records: row.get(5)?,
-            menu_width: row.get(6)?,
-            menu_height: row.get(7)?,
-            auto_start: row.get::<_, i32>(8)? > 0,
+            auto_start: row.get::<_, i32>(6)? > 0,
         })
     } else {
         Ok(Settings::default())
@@ -248,9 +240,9 @@ pub fn init_database() -> Result<()> {
             theme TEXT DEFAULT 'system',
             keep_days INTEGER DEFAULT 1,
             max_records INTEGER DEFAULT 500,
-            menu_width INTEGER DEFAULT 400,
-            menu_height INTEGER DEFAULT 500,
-            auto_start INTEGER DEFAULT 0
+            auto_start INTEGER DEFAULT 0,
+            window_width INTEGER,
+            window_height INTEGER
         )",
         [],
     )?;
@@ -628,9 +620,7 @@ pub fn save_settings(settings: &Settings) -> Result<(), rusqlite::Error> {
             theme = ?4,
             keep_days = ?5,
             max_records = ?6,
-            menu_width = ?7,
-            menu_height = ?8,
-            auto_start = ?9
+            auto_start = ?7
          WHERE id = 1",
         params![
             settings.hotkey_modifiers as i32,
@@ -639,8 +629,6 @@ pub fn save_settings(settings: &Settings) -> Result<(), rusqlite::Error> {
             settings.theme,
             settings.keep_days,
             settings.max_records,
-            settings.menu_width,
-            settings.menu_height,
             settings.auto_start as i32,
         ],
     )?;
@@ -650,22 +638,25 @@ pub fn save_settings(settings: &Settings) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
-pub fn save_menu_size(width: i32, height: i32) -> Result<(), rusqlite::Error> {
+pub fn save_window_size(width: i32, height: i32) -> Result<(), rusqlite::Error> {
     let conn = lock_db_connection()?;
-    let width = width.max(MIN_MENU_WIDTH);
-    let height = height.max(MIN_MENU_HEIGHT);
-
     conn.execute(
-        "INSERT OR IGNORE INTO settings (id) VALUES (1)",
-        [],
-    )?;
-
-    conn.execute(
-        "UPDATE settings
-         SET menu_width = ?1, menu_height = ?2
-         WHERE id = 1",
+        "INSERT OR REPLACE INTO settings (id, window_width, window_height) VALUES (1, ?1, ?2)",
         params![width, height],
     )?;
-
     Ok(())
+}
+
+pub fn get_window_size() -> Result<Option<(i32, i32)>, rusqlite::Error> {
+    let conn = lock_db_connection()?;
+    let mut stmt = conn.prepare("SELECT window_width, window_height FROM settings WHERE id = 1")?;
+    let result = stmt.query_row([], |row| {
+        let width: Option<i32> = row.get(0)?;
+        let height: Option<i32> = row.get(1)?;
+        Ok((width, height))
+    });
+    match result {
+        Ok((Some(w), Some(h))) => Ok(Some((w, h))),
+        _ => Ok(None),
+    }
 }

@@ -41,8 +41,6 @@
         theme: 'system',
         keep_days: 1,
         max_records: 500,
-        menu_width: 400,
-        menu_height: 500,
         auto_start: false
     });
 

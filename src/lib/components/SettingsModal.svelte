@@ -33,8 +33,6 @@
         theme: 'system',
         keep_days: 1,
         max_records: 500,
-        menu_width: 400,
-        menu_height: 500,
         auto_start: false
     });
 
@@ -357,7 +355,6 @@
     }
 
     .settings-modal {
-        /* 主窗口最小 300x400 时保持可用，内容区只允许纵向滚动 */
         width: min(92vw, 260px);
         min-width: 240px;
         max-width: 100%;
