@@ -1,6 +1,6 @@
 <script lang="ts">
-    import type { ClipboardRecord } from '$lib/types';
-    import ClipboardItem from './ClipboardItem.svelte';
+    import type { ClipboardRecord } from "$lib/types";
+    import ClipboardItem from "./ClipboardItem.svelte";
 
     interface Props {
         records: ClipboardRecord[];
@@ -20,8 +20,8 @@
         ondelete,
         onfavorite,
         onpin,
-        emptyTitle = '暂无历史记录',
-        emptyHint = '复制内容后会自动记录'
+        emptyTitle = "暂无历史记录",
+        emptyHint = "复制内容后会自动记录",
     }: Props = $props();
 </script>
 
@@ -33,8 +33,15 @@
         </div>
     {:else if records.length === 0}
         <div class="empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+            >
+                <path
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
             </svg>
             <p>{emptyTitle}</p>
             <span>{emptyHint}</span>

@@ -6,7 +6,12 @@
         onchange?: (value: string) => void;
     }
 
-    let { value = $bindable(''), placeholder = '搜索剪贴板内容...', onsubmit, onchange }: Props = $props();
+    let {
+        value = $bindable(""),
+        placeholder = "搜索剪贴板内容...",
+        onsubmit,
+        onchange,
+    }: Props = $props();
     let inputEl: HTMLInputElement | null = null;
 
     function handleInput(e: Event) {
@@ -16,14 +21,14 @@
     }
 
     function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Enter' && onsubmit) {
+        if (e.key === "Enter" && onsubmit) {
             onsubmit();
         }
     }
 
     function clear() {
-        value = '';
-        onchange?.('');
+        value = "";
+        onchange?.("");
     }
 
     export function focusInput() {
@@ -33,13 +38,19 @@
 
 <div class="search-bar">
     <div class="input-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+        >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
         </svg>
         <input
             type="text"
-            placeholder={placeholder}
+            {placeholder}
             bind:value
             bind:this={inputEl}
             oninput={handleInput}
@@ -47,8 +58,18 @@
             aria-label="搜索"
         />
         {#if value}
-            <button type="button" class="clear-btn" onclick={clear} aria-label="清空搜索">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button
+                type="button"
+                class="clear-btn"
+                onclick={clear}
+                aria-label="清空搜索"
+            >
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
                     <path d="M18 6 6 18M6 6l12 12" />
                 </svg>
             </button>

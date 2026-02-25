@@ -1,13 +1,13 @@
 <script lang="ts">
-    import { invoke } from '@tauri-apps/api/core';
-    import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-    import { getVersion } from '@tauri-apps/api/app';
-    import { open as openDialog } from '@tauri-apps/plugin-dialog';
-    import { onMount } from 'svelte';
-    import type { ClipboardRecord, Settings } from '$lib/types';
-    import SearchBar from '$lib/components/SearchBar.svelte';
-    import ClipboardList from '$lib/components/ClipboardList.svelte';
-    import SettingsModal from '$lib/components/SettingsModal.svelte';
+    import { invoke } from "@tauri-apps/api/core";
+    import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+    import { getVersion } from "@tauri-apps/api/app";
+    import { open as openDialog } from "@tauri-apps/plugin-dialog";
+    import { onMount } from "svelte";
+    import type { ClipboardRecord, Settings } from "$lib/types";
+    import SearchBar from "$lib/components/SearchBar.svelte";
+    import ClipboardList from "$lib/components/ClipboardList.svelte";
+    import SettingsModal from "$lib/components/SettingsModal.svelte";
 
     type ExportFavoritesResult = {
         count: number;
@@ -16,10 +16,12 @@
 
     let records = $state<ClipboardRecord[]>([]);
     let loading = $state(false);
-    let searchKeyword = $state('');
+    let searchKeyword = $state("");
     let favoritesOnly = $state(false);
-    let searchTimeout: ReturnType<typeof setTimeout>;
-    let historyRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let searchTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+    let mediaQueryListener: (() => void) | undefined = undefined;
+    let historyRefreshDebounceTimer: ReturnType<typeof setTimeout> | undefined =
+        undefined;
     let unlistenOpenSettings: UnlistenFn | null = null;
     let unlistenOpenAbout: UnlistenFn | null = null;
     let unlistenMainWindowOpened: UnlistenFn | null = null;
@@ -27,80 +29,85 @@
     let unlistenHotkeyFailed: UnlistenFn | null = null;
     let settingsOpen = $state(false);
     let aboutOpen = $state(false);
-    let appVersion = $state('0.1.0');
+    let appVersion = $state("0.1.0");
     let clearConfirmOpen = $state(false);
     let addFavoriteOpen = $state(false);
     let hotkeyErrorOpen = $state(false);
-    let favoriteInput = $state('');
+    let favoriteInput = $state("");
     let addFavoriteSaving = $state(false);
     let searchBarRef: { focusInput: () => void } | null = null;
     let settings = $state<Settings>({
         hotkey_modifiers: 0,
         hotkey_key: 0,
-        hotkey: 'Ctrl+Shift+V',
-        theme: 'system',
+        hotkey: "Ctrl+Shift+V",
+        theme: "system",
         keep_days: 1,
         max_records: 500,
-        auto_start: false
+        auto_start: false,
     });
 
-    // 获取记录数量限制，优先使用设置值，否则默认 500
+    // 获取记录数量限制，0 代表无限制（SQLite LIMIT -1 = 无限制）
     function getLimit(): number {
-        return settings?.max_records || 500;
+        const val = settings?.max_records ?? 500;
+        return val > 0 ? val : -1;
     }
 
     function preApplyCachedTheme() {
-        if (typeof window === 'undefined') return;
-        const cached = window.localStorage.getItem('snappaste-theme');
-        if (cached === 'light' || cached === 'dark') {
-            document.documentElement.setAttribute('data-theme', cached);
-        } else if (cached === 'system') {
-            document.documentElement.removeAttribute('data-theme');
+        if (typeof window === "undefined") return;
+        const cached = window.localStorage.getItem("snappaste-theme");
+        if (cached === "light" || cached === "dark") {
+            document.documentElement.setAttribute("data-theme", cached);
+        } else if (cached === "system") {
+            document.documentElement.removeAttribute("data-theme");
         }
     }
 
     preApplyCachedTheme();
 
-    function listCommand(): 'get_history_records' | 'get_favorite_records' {
-        return favoritesOnly ? 'get_favorite_records' : 'get_history_records';
+    function listCommand(): "get_history_records" | "get_favorite_records" {
+        return favoritesOnly ? "get_favorite_records" : "get_history_records";
     }
 
-    function searchCommand(): 'search_records' | 'search_favorite_records' {
-        return favoritesOnly ? 'search_favorite_records' : 'search_records';
+    function searchCommand(): "search_records" | "search_favorite_records" {
+        return favoritesOnly ? "search_favorite_records" : "search_records";
     }
 
     function pageTitle(): string {
-        return favoritesOnly ? '收藏' : '历史记录';
+        return favoritesOnly ? "收藏" : "历史记录";
     }
 
     function emptyTitle(): string {
-        return favoritesOnly ? '暂无收藏' : '暂无记录';
+        return favoritesOnly ? "暂无收藏" : "暂无记录";
     }
 
     function emptyHint(): string {
-        return favoritesOnly ? '点击+来添加' : '复制内容以记录';
+        return favoritesOnly ? "点击+来添加" : "复制内容以记录";
     }
 
-    function sortRecordsByPinnedAndTime(items: ClipboardRecord[]): ClipboardRecord[] {
+    function sortRecordsByPinnedAndTime(
+        items: ClipboardRecord[],
+    ): ClipboardRecord[] {
         return [...items].sort((a, b) => {
             const pinDiff = Number(b.is_pinned) - Number(a.is_pinned);
             if (pinDiff !== 0) return pinDiff;
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            return (
+                new Date(b.created_at).getTime() -
+                new Date(a.created_at).getTime()
+            );
         });
     }
 
-    function applyTheme(theme: Settings['theme']) {
+    function applyTheme(theme: Settings["theme"]) {
         const root = document.documentElement;
-        if (typeof window !== 'undefined') {
-            window.localStorage.setItem('snappaste-theme', theme);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("snappaste-theme", theme);
         }
-        if (theme === 'system') {
-            // system 主题：移除 data-theme 属性，使用 CSS @media (prefers-color-scheme) 自动检测
-            root.removeAttribute('data-theme');
-            root.setAttribute('data-theme', 'auto');
+        if (theme === "system") {
+            // system 主题：设为 auto，由 CSS @media (prefers-color-scheme) 自动检测
+            root.setAttribute("data-theme", "auto");
             return;
         }
-        root.setAttribute('data-theme', theme);
+        root.setAttribute("data-theme", theme);
     }
 
     async function loadHistory(showLoading: boolean = true) {
@@ -112,16 +119,16 @@
             if (keyword) {
                 records = await invoke<ClipboardRecord[]>(searchCommand(), {
                     keyword,
-                    limit: getLimit()
+                    limit: getLimit(),
                 });
             } else {
                 records = await invoke<ClipboardRecord[]>(listCommand(), {
                     limit: getLimit(),
-                    offset: 0
+                    offset: 0,
                 });
             }
         } catch (error) {
-            console.error('Failed to load history:', error);
+            console.error("Failed to load history:", error);
         } finally {
             if (showLoading) {
                 loading = false;
@@ -141,12 +148,12 @@
             }
             const newRecords = await invoke<ClipboardRecord[]>(listCommand(), {
                 limit: getLimit(),
-                offset: 0
+                offset: 0,
             });
             // 静默更新，不触发 loading
             records = newRecords;
         } catch (error) {
-            console.error('Failed to refresh:', error);
+            console.error("Failed to refresh:", error);
         }
     }
 
@@ -155,29 +162,29 @@
             clearTimeout(historyRefreshDebounceTimer);
         }
         historyRefreshDebounceTimer = setTimeout(() => {
-            historyRefreshDebounceTimer = null;
+            historyRefreshDebounceTimer = undefined;
             void refreshHistory();
         }, delayMs);
     }
 
     async function searchHistory(keyword: string) {
-        clearTimeout(searchTimeout);
+        if (searchTimeout) clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
             try {
                 loading = true;
                 if (keyword.trim()) {
                     records = await invoke<ClipboardRecord[]>(searchCommand(), {
                         keyword,
-                        limit: getLimit()
+                        limit: getLimit(),
                     });
                 } else {
                     records = await invoke<ClipboardRecord[]>(listCommand(), {
                         limit: getLimit(),
-                        offset: 0
+                        offset: 0,
                     });
                 }
             } catch (error) {
-                console.error('Failed to search:', error);
+                console.error("Failed to search:", error);
             } finally {
                 loading = false;
             }
@@ -191,24 +198,30 @@
 
     async function resetSearchStateOnShow() {
         if (!searchKeyword.trim()) return;
-        clearTimeout(searchTimeout);
-        searchKeyword = '';
+        if (searchTimeout) clearTimeout(searchTimeout);
+        searchKeyword = "";
         await loadHistory(false);
     }
 
     function focusSearchInput(delayMs: number = 0) {
         setTimeout(() => {
-            if (settingsOpen || clearConfirmOpen || addFavoriteOpen || aboutOpen) return;
+            if (
+                settingsOpen ||
+                clearConfirmOpen ||
+                addFavoriteOpen ||
+                aboutOpen
+            )
+                return;
             searchBarRef?.focusInput?.();
         }, delayMs);
     }
 
     async function loadSettings() {
         try {
-            settings = await invoke<Settings>('get_app_settings');
+            settings = await invoke<Settings>("get_app_settings");
             applyTheme(settings.theme);
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            console.error("Failed to load settings:", error);
         }
     }
 
@@ -220,32 +233,32 @@
         focusSearchInput(0);
 
         // 保存到后端（不重新加载设置，因为我们已经有了最新值）
-        void invoke('save_app_settings', { settings: nextSettings })
+        void invoke("save_app_settings", { settings: nextSettings })
             .then(async () => {
-            await loadHistory();
+                await loadHistory();
             })
             .catch((error) => {
-                console.error('Failed to save settings:', error);
+                console.error("Failed to save settings:", error);
             });
     }
 
     async function handleCopy(id: number) {
-        const record = records.find(r => r.id === id);
+        const record = records.find((r) => r.id === id);
         if (record) {
             try {
-                await invoke('paste_record_content', { id: record.id });
+                await invoke("paste_record_content", { id: record.id });
             } catch (error) {
-                console.error('Failed to paste record content:', error);
+                console.error("Failed to paste record content:", error);
             }
         }
     }
 
     async function handleDelete(id: number) {
         try {
-            await invoke('delete_clipboard_record', { id });
-            records = records.filter(r => r.id !== id);
+            await invoke("delete_clipboard_record", { id });
+            records = records.filter((r) => r.id !== id);
         } catch (error) {
-            console.error('Failed to delete:', error);
+            console.error("Failed to delete:", error);
         }
     }
 
@@ -255,36 +268,36 @@
             records = records.filter((r) => r.id !== id);
         } else {
             records = records.map((r) =>
-                r.id === id ? { ...r, is_favorite: favorite } : r
+                r.id === id ? { ...r, is_favorite: favorite } : r,
             );
         }
 
         try {
-            await invoke('set_record_favorite_state', { id, favorite });
+            await invoke("set_record_favorite_state", { id, favorite });
         } catch (error) {
             records = previous;
-            console.error('Failed to update favorite state:', error);
+            console.error("Failed to update favorite state:", error);
         }
     }
 
     async function handlePinned(id: number, pinned: boolean) {
         const previous = records;
         records = records.map((r) =>
-            r.id === id ? { ...r, is_pinned: pinned } : r
+            r.id === id ? { ...r, is_pinned: pinned } : r,
         );
         records = sortRecordsByPinnedAndTime(records);
 
         try {
-            await invoke('set_record_pinned_state', { id, pinned });
+            await invoke("set_record_pinned_state", { id, pinned });
         } catch (error) {
             records = previous;
-            console.error('Failed to update pinned state:', error);
+            console.error("Failed to update pinned state:", error);
         }
     }
 
     function openAddFavoriteDialog() {
         addFavoriteOpen = true;
-        favoriteInput = '';
+        favoriteInput = "";
     }
 
     function closeAddFavoriteDialog() {
@@ -299,13 +312,13 @@
 
         addFavoriteSaving = true;
         try {
-            await invoke('add_custom_favorite_record', { content: text });
+            await invoke("add_custom_favorite_record", { content: text });
             addFavoriteOpen = false;
-            favoriteInput = '';
+            favoriteInput = "";
             await loadHistory();
             focusSearchInput(0);
         } catch (error) {
-            console.error('Failed to add custom favorite record:', error);
+            console.error("Failed to add custom favorite record:", error);
         } finally {
             addFavoriteSaving = false;
         }
@@ -316,26 +329,26 @@
     }
 
     function clearConfirmTitle(): string {
-        return favoritesOnly ? '清空收藏' : '清空历史';
+        return favoritesOnly ? "清空收藏" : "清空历史";
     }
 
     function clearConfirmHint(): string {
-        return favoritesOnly
-            ? '将删除全部收藏项目'
-            : '将删除全部历史记录';
+        return favoritesOnly ? "将删除全部收藏项目" : "将删除全部历史记录";
     }
 
     function clearConfirmAction(): string {
-        return favoritesOnly ? '清空' : '清空';
+        return favoritesOnly ? "清空" : "清空";
     }
 
     async function confirmClearAll() {
         try {
-            const command = favoritesOnly ? 'clear_favorite_items' : 'clear_history_only';
+            const command = favoritesOnly
+                ? "clear_favorite_items"
+                : "clear_history_only";
             await invoke(command);
             records = [];
         } catch (error) {
-            console.error('Failed to clear history:', error);
+            console.error("Failed to clear history:", error);
         } finally {
             clearConfirmOpen = false;
             focusSearchInput(0);
@@ -344,7 +357,7 @@
 
     async function toggleFavoritesView() {
         favoritesOnly = !favoritesOnly;
-        searchKeyword = '';
+        searchKeyword = "";
         await loadHistory(false);
         focusSearchInput(0);
     }
@@ -354,17 +367,22 @@
         focusSearchInput(0);
         void (async () => {
             try {
-                await invoke('suspend_auto_hide', { ms: 10000 });
+                await invoke("suspend_auto_hide", { ms: 10000 });
                 const selected = await openDialog({
                     multiple: false,
-                    directory: true
+                    directory: true,
                 });
                 if (!selected || Array.isArray(selected)) return;
 
-                const result = await invoke<ExportFavoritesResult>('export_favorites_to_path', {
-                    path: selected,
-                });
-                window.alert(`导出完成，共 ${result.count} 条收藏\n文件: ${result.path}`);
+                const result = await invoke<ExportFavoritesResult>(
+                    "export_favorites_to_path",
+                    {
+                        path: selected,
+                    },
+                );
+                window.alert(
+                    `导出完成，共 ${result.count} 条收藏\n文件: ${result.path}`,
+                );
             } catch (error) {
                 window.alert(`导出失败: ${String(error)}`);
             }
@@ -376,14 +394,17 @@
         focusSearchInput(0);
         void (async () => {
             try {
-                await invoke('suspend_auto_hide', { ms: 10000 });
+                await invoke("suspend_auto_hide", { ms: 10000 });
                 const selected = await openDialog({
                     multiple: false,
                     directory: false,
-                    filters: [{ name: 'JSON', extensions: ['json'] }]
+                    filters: [{ name: "JSON", extensions: ["json"] }],
                 });
                 if (!selected || Array.isArray(selected)) return;
-                const count = await invoke<number>('import_favorites_from_path', { path: selected });
+                const count = await invoke<number>(
+                    "import_favorites_from_path",
+                    { path: selected },
+                );
                 window.alert(`导入完成，新增 ${count} 条收藏`);
                 await loadHistory();
             } catch (error) {
@@ -393,21 +414,23 @@
     }
 
     onMount(() => {
-        void invoke('set_frontend_ready')
-            .catch((error) => {
-                console.error('Failed to notify frontend ready:', error);
-            });
+        void invoke("set_frontend_ready").catch((error) => {
+            console.error("Failed to notify frontend ready:", error);
+        });
 
         // 监听系统主题变化
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
         const handleThemeChange = () => {
             // 只有当前是系统主题模式时才更新
-            const savedTheme = window.localStorage.getItem('snappaste-theme');
-            if (savedTheme === 'system' || savedTheme === 'auto') {
-                applyTheme('system');
+            const savedTheme = window.localStorage.getItem("snappaste-theme");
+            if (savedTheme === "system" || savedTheme === "auto") {
+                applyTheme("system");
             }
         };
-        mediaQuery.addEventListener('change', handleThemeChange);
+        mediaQuery.addEventListener("change", handleThemeChange);
+        mediaQueryListener = () => {
+            mediaQuery.removeEventListener("change", handleThemeChange);
+        };
 
         // 监听由后端事件驱动刷新 UI
         loadSettings();
@@ -416,50 +439,63 @@
                 appVersion = v;
             })
             .catch(() => {});
-        listen('open-settings', async () => {
+        listen("open-settings", async () => {
             // 不重新加载设置，使用内存中已有的最新值
             settingsOpen = true;
-        }).then((unlisten) => {
-            unlistenOpenSettings = unlisten;
-        }).catch((error) => {
-            console.error('Failed to listen open-settings:', error);
-        });
-        listen('open-about', () => {
+        })
+            .then((unlisten) => {
+                unlistenOpenSettings = unlisten;
+            })
+            .catch((error) => {
+                console.error("Failed to listen open-settings:", error);
+            });
+        listen("open-about", () => {
             settingsOpen = false;
             aboutOpen = true;
-        }).then((unlisten) => {
-            unlistenOpenAbout = unlisten;
-        }).catch((error) => {
-            console.error('Failed to listen open-about:', error);
-        });
-        listen('main-window-opened', async () => {
-            const listEl = document.querySelector('.clipboard-list');
+        })
+            .then((unlisten) => {
+                unlistenOpenAbout = unlisten;
+            })
+            .catch((error) => {
+                console.error("Failed to listen open-about:", error);
+            });
+        listen("main-window-opened", async () => {
+            const listEl = document.querySelector(".clipboard-list");
             if (listEl) {
                 listEl.scrollTop = 0;
             }
             void resetSearchStateOnShow();
             focusSearchInput(16);
-        }).then((unlisten) => {
-            unlistenMainWindowOpened = unlisten;
-        }).catch((error) => {
-            console.error('Failed to listen main-window-opened:', error);
-        });
-        listen('history-changed', () => {
+        })
+            .then((unlisten) => {
+                unlistenMainWindowOpened = unlisten;
+            })
+            .catch((error) => {
+                console.error("Failed to listen main-window-opened:", error);
+            });
+        listen("history-changed", () => {
             scheduleRefreshHistory(120);
-        }).then((unlisten) => {
-            unlistenHistoryChanged = unlisten;
-        }).catch((error) => {
-            console.error('Failed to listen history-changed:', error);
-        });
+        })
+            .then((unlisten) => {
+                unlistenHistoryChanged = unlisten;
+            })
+            .catch((error) => {
+                console.error("Failed to listen history-changed:", error);
+            });
 
-        listen<string>('hotkey-register-failed', (event) => {
-            console.error('Hotkey registration failed:', event.payload);
+        listen<string>("hotkey-register-failed", (event) => {
+            console.error("Hotkey registration failed:", event.payload);
             hotkeyErrorOpen = true;
-        }).then((unlisten) => {
-            unlistenHotkeyFailed = unlisten;
-        }).catch((error) => {
-            console.error('Failed to listen hotkey-register-failed:', error);
-        });
+        })
+            .then((unlisten) => {
+                unlistenHotkeyFailed = unlisten;
+            })
+            .catch((error) => {
+                console.error(
+                    "Failed to listen hotkey-register-failed:",
+                    error,
+                );
+            });
 
         void refreshHistory();
         focusSearchInput(16);
@@ -482,7 +518,15 @@
             }
             if (historyRefreshDebounceTimer) {
                 clearTimeout(historyRefreshDebounceTimer);
-                historyRefreshDebounceTimer = null;
+                historyRefreshDebounceTimer = undefined;
+            }
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+                searchTimeout = undefined;
+            }
+            if (mediaQueryListener) {
+                mediaQueryListener();
+                mediaQueryListener = undefined;
             }
         };
     });
@@ -495,12 +539,17 @@
             <button
                 class="refresh-btn danger"
                 onclick={handleClearAll}
-                aria-label={favoritesOnly ? '清空收藏' : '清空历史'}
+                aria-label={favoritesOnly ? "清空收藏" : "清空历史"}
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
-                    <path d="M10 11v6M14 11v6"/>
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M10 11v6M14 11v6" />
                 </svg>
             </button>
             <button
@@ -508,18 +557,30 @@
                 onclick={openAddFavoriteDialog}
                 aria-label="添加收藏"
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14"/>
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path d="M12 5v14M5 12h14" />
                 </svg>
             </button>
             <button
                 class="refresh-btn favorite-toggle"
                 class:active={favoritesOnly}
                 onclick={toggleFavoritesView}
-                aria-label={favoritesOnly ? '切换到记录' : '切换到收藏'}
+                aria-label={favoritesOnly ? "切换到记录" : "切换到收藏"}
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 3l2.9 5.88 6.49.95-4.7 4.58 1.11 6.47L12 17.8l-5.8 3.08 1.1-6.47-4.7-4.58 6.5-.95z"/>
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path
+                        d="M12 3l2.9 5.88 6.49.95-4.7 4.58 1.11 6.47L12 17.8l-5.8 3.08 1.1-6.47-4.7-4.58 6.5-.95z"
+                    />
                 </svg>
             </button>
         </div>
@@ -549,7 +610,12 @@
 
     {#if addFavoriteOpen}
         <div class="confirm-backdrop">
-            <div class="confirm-modal" role="dialog" aria-modal="true" aria-label="添加收藏">
+            <div
+                class="confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label="添加收藏"
+            >
                 <h3>添加收藏</h3>
                 <textarea
                     class="favorite-input"
@@ -558,9 +624,17 @@
                     placeholder="输入内容..."
                 ></textarea>
                 <div class="confirm-actions">
-                    <button class="cancel-btn" onclick={closeAddFavoriteDialog} disabled={addFavoriteSaving}>取消</button>
-                    <button class="primary-btn" onclick={submitAddFavorite} disabled={addFavoriteSaving || !favoriteInput.trim()}>
-                        {addFavoriteSaving ? '保存中...' : '添加'}
+                    <button
+                        class="cancel-btn"
+                        onclick={closeAddFavoriteDialog}
+                        disabled={addFavoriteSaving}>取消</button
+                    >
+                    <button
+                        class="primary-btn"
+                        onclick={submitAddFavorite}
+                        disabled={addFavoriteSaving || !favoriteInput.trim()}
+                    >
+                        {addFavoriteSaving ? "保存中..." : "添加"}
                     </button>
                 </div>
             </div>
@@ -581,12 +655,20 @@
 
     {#if aboutOpen}
         <div class="confirm-backdrop">
-            <div class="confirm-modal" role="dialog" aria-modal="true" aria-label="关于">
+            <div
+                class="confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label="关于"
+            >
                 <h3>关于 SnapPaste</h3>
                 <p>版本：v{appVersion}</p>
                 <p>作者：21b</p>
                 <div class="confirm-actions">
-                    <button class="primary-btn" onclick={() => (aboutOpen = false)}>知道了</button>
+                    <button
+                        class="primary-btn"
+                        onclick={() => (aboutOpen = false)}>知道了</button
+                    >
                 </div>
             </div>
         </div>
@@ -594,7 +676,12 @@
 
     {#if clearConfirmOpen}
         <div class="confirm-backdrop">
-            <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-label="确认清空">
+            <div
+                class="confirm-modal"
+                role="alertdialog"
+                aria-modal="true"
+                aria-label="确认清空"
+            >
                 <h3>{clearConfirmTitle()}</h3>
                 <p>{clearConfirmHint()}</p>
                 <div class="confirm-actions">
@@ -607,7 +694,9 @@
                     >
                         取消
                     </button>
-                    <button class="danger-btn" onclick={confirmClearAll}>{clearConfirmAction()}</button>
+                    <button class="danger-btn" onclick={confirmClearAll}
+                        >{clearConfirmAction()}</button
+                    >
                 </div>
             </div>
         </div>
@@ -615,9 +704,17 @@
 
     {#if hotkeyErrorOpen}
         <div class="confirm-backdrop">
-            <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-label="快捷键错误">
+            <div
+                class="confirm-modal"
+                role="alertdialog"
+                aria-modal="true"
+                aria-label="快捷键错误"
+            >
                 <h3>快捷键注册失败</h3>
-                <p>默认快捷键 Ctrl+Shift+V 被其他程序占用，请关闭占用程序后重启应用，或在设置中更换快捷键。</p>
+                <p>
+                    默认快捷键 Ctrl+Shift+V
+                    被其他程序占用，请关闭占用程序后重启应用，或在设置中更换快捷键。
+                </p>
                 <div class="confirm-actions">
                     <button
                         class="primary-btn"
@@ -734,7 +831,8 @@
         flex-direction: column;
         height: 100vh;
         background: var(--bg-primary);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
         border: 1px solid var(--border-color);
         box-shadow: 0 8px 32px var(--glass-shadow);
         overflow: hidden;
@@ -920,10 +1018,15 @@
         color: #fff;
     }
 
-    .cancel-btn:hover,
-    .danger-btn:hover {
+    .cancel-btn:hover {
         transform: translateY(-1px);
         background: var(--bg-hover);
+    }
+
+    .danger-btn:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.1);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
     }
 
     .primary-btn:hover {

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Settings } from '$lib/types';
+    import type { Settings } from "$lib/types";
 
     interface Props {
         open: boolean;
@@ -10,74 +10,78 @@
         onclose?: () => void;
     }
 
-    let { open, settings, onsave, onopenimport, onopenexport, onclose }: Props = $props();
+    let { open, settings, onsave, onopenimport, onopenexport, onclose }: Props =
+        $props();
     let saving = $state(false);
-    let hotkeyModifier = $state('Ctrl+Shift');
-    let hotkeyKey = $state('V');
-    let hotkeyError = $state('');
+    let hotkeyModifier = $state("Ctrl+Shift");
+    let hotkeyKey = $state("V");
+    let hotkeyError = $state("");
 
     const modifierOptions = [
-        { value: '', label: '无修饰键' },
-        { value: 'Ctrl', label: 'Ctrl' },
-        { value: 'Alt', label: 'Alt' },
-        { value: 'Shift', label: 'Shift' },
-        { value: 'Ctrl+Alt', label: 'Ctrl + Alt' },
-        { value: 'Ctrl+Shift', label: 'Ctrl + Shift' },
-        { value: 'Alt+Shift', label: 'Alt + Shift' }
+        { value: "", label: "无修饰键" },
+        { value: "Ctrl", label: "Ctrl" },
+        { value: "Alt", label: "Alt" },
+        { value: "Shift", label: "Shift" },
+        { value: "Ctrl+Alt", label: "Ctrl + Alt" },
+        { value: "Ctrl+Shift", label: "Ctrl + Shift" },
+        { value: "Alt+Shift", label: "Alt + Shift" },
     ] as const;
 
     let draft = $state<Settings>({
         hotkey_modifiers: 0,
         hotkey_key: 0,
-        hotkey: 'Ctrl+Shift+V',
-        theme: 'system',
+        hotkey: "Ctrl+Shift+V",
+        theme: "system",
         keep_days: 1,
         max_records: 500,
-        auto_start: false
+        auto_start: false,
     });
 
     function normalizeModifiers(values: string[]): string {
-        const hasCtrl = values.includes('Ctrl');
-        const hasAlt = values.includes('Alt');
-        const hasShift = values.includes('Shift');
+        const hasCtrl = values.includes("Ctrl");
+        const hasAlt = values.includes("Alt");
+        const hasShift = values.includes("Shift");
         const normalized = [
-            hasCtrl ? 'Ctrl' : '',
-            hasAlt ? 'Alt' : '',
-            hasShift ? 'Shift' : ''
+            hasCtrl ? "Ctrl" : "",
+            hasAlt ? "Alt" : "",
+            hasShift ? "Shift" : "",
         ].filter(Boolean);
-        return normalized.join('+');
+        return normalized.join("+");
     }
 
     function parseHotkey(hotkey: string): { modifier: string; key: string } {
         const tokens = hotkey
-            .split('+')
+            .split("+")
             .map((t) => t.trim())
             .filter(Boolean);
 
         if (tokens.length === 0) {
-            return { modifier: 'Ctrl+Shift', key: 'V' };
+            return { modifier: "Ctrl+Shift", key: "V" };
         }
 
         const key = normalizeKeyToken(tokens[tokens.length - 1]);
-        const modTokens = tokens.slice(0, -1).map((t) => {
-            const upper = t.toUpperCase();
-            if (upper === 'CTRL' || upper === 'CONTROL') return 'Ctrl';
-            if (upper === 'ALT' || upper === 'OPTION') return 'Alt';
-            if (upper === 'SHIFT') return 'Shift';
-            return '';
-        }).filter(Boolean);
+        const modTokens = tokens
+            .slice(0, -1)
+            .map((t) => {
+                const upper = t.toUpperCase();
+                if (upper === "CTRL" || upper === "CONTROL") return "Ctrl";
+                if (upper === "ALT" || upper === "OPTION") return "Alt";
+                if (upper === "SHIFT") return "Shift";
+                return "";
+            })
+            .filter(Boolean);
 
         const modifier = normalizeModifiers(modTokens);
         const hasOption = modifierOptions.some((o) => o.value === modifier);
         return {
-            modifier: hasOption ? modifier : '',
-            key: key || 'V'
+            modifier: hasOption ? modifier : "",
+            key: key || "V",
         };
     }
 
     function normalizeKeyToken(raw: string): string {
         const token = raw.trim();
-        if (!token) return '';
+        if (!token) return "";
 
         if (/^[a-zA-Z0-9]$/.test(token)) {
             return token.toUpperCase();
@@ -98,21 +102,21 @@
         }
 
         switch (upper) {
-            case 'ESCAPE':
-            case 'ESC':
-                return 'Esc';
-            case ' ':
-            case 'SPACE':
-            case 'SPACEBAR':
-                return 'Space';
-            case 'ARROWUP':
-                return 'ArrowUp';
-            case 'ARROWDOWN':
-                return 'ArrowDown';
-            case 'ARROWLEFT':
-                return 'ArrowLeft';
-            case 'ARROWRIGHT':
-                return 'ArrowRight';
+            case "ESCAPE":
+            case "ESC":
+                return "Esc";
+            case " ":
+            case "SPACE":
+            case "SPACEBAR":
+                return "Space";
+            case "ARROWUP":
+                return "ArrowUp";
+            case "ARROWDOWN":
+                return "ArrowDown";
+            case "ARROWLEFT":
+                return "ArrowLeft";
+            case "ARROWRIGHT":
+                return "ArrowRight";
             default:
                 return token;
         }
@@ -120,7 +124,7 @@
 
     function keyLabel(token: string): string {
         if (/^Numpad[0-9]$/.test(token)) {
-            return token.replace('Numpad', 'Num');
+            return token.replace("Numpad", "Num");
         }
         return token;
     }
@@ -131,8 +135,8 @@
     }
 
     function keyTokenFromEvent(e: KeyboardEvent): string {
-        if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
-            return '';
+        if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+            return "";
         }
 
         if (/^Key[A-Z]$/.test(e.code)) {
@@ -156,22 +160,38 @@
         }
 
         switch (e.key) {
-            case 'ArrowUp': return 'ArrowUp';
-            case 'ArrowDown': return 'ArrowDown';
-            case 'ArrowLeft': return 'ArrowLeft';
-            case 'ArrowRight': return 'ArrowRight';
-            case 'Enter': return 'Enter';
-            case 'Tab': return 'Tab';
-            case 'Escape': return 'Esc';
-            case 'Backspace': return 'Backspace';
-            case 'Delete': return 'Delete';
-            case 'Insert': return 'Insert';
-            case 'Home': return 'Home';
-            case 'End': return 'End';
-            case 'PageUp': return 'PageUp';
-            case 'PageDown': return 'PageDown';
-            case ' ': return 'Space';
-            default: return normalizeKeyToken(e.key);
+            case "ArrowUp":
+                return "ArrowUp";
+            case "ArrowDown":
+                return "ArrowDown";
+            case "ArrowLeft":
+                return "ArrowLeft";
+            case "ArrowRight":
+                return "ArrowRight";
+            case "Enter":
+                return "Enter";
+            case "Tab":
+                return "Tab";
+            case "Escape":
+                return "Esc";
+            case "Backspace":
+                return "Backspace";
+            case "Delete":
+                return "Delete";
+            case "Insert":
+                return "Insert";
+            case "Home":
+                return "Home";
+            case "End":
+                return "End";
+            case "PageUp":
+                return "PageUp";
+            case "PageDown":
+                return "PageDown";
+            case " ":
+                return "Space";
+            default:
+                return normalizeKeyToken(e.key);
         }
     }
 
@@ -185,7 +205,7 @@
 
     function handleHotkeyModifierChange(e: Event) {
         hotkeyModifier = (e.target as HTMLSelectElement).value;
-        hotkeyError = '';
+        hotkeyError = "";
         updateDraftHotkey();
     }
 
@@ -194,24 +214,21 @@
         const token = keyTokenFromEvent(e);
         if (!token) return;
         hotkeyKey = token;
-        hotkeyError = '';
+        hotkeyError = "";
         updateDraftHotkey();
     }
 
     $effect(() => {
         // 显式跟踪 open 和 settings 的变化
         if (open) {
-            // 确保读取 settings 的所有属性以跟踪依赖
-            const _theme = settings.theme;
-            const _hotkey = settings.hotkey;
-            const parsed = parseHotkey(_hotkey);
+            const parsed = parseHotkey(settings.hotkey);
             draft = {
                 ...settings,
-                hotkey: formatHotkey(parsed.modifier, parsed.key)
+                hotkey: formatHotkey(parsed.modifier, parsed.key),
             };
             hotkeyModifier = parsed.modifier;
             hotkeyKey = parsed.key;
-            hotkeyError = '';
+            hotkeyError = "";
         }
     });
 
@@ -219,7 +236,7 @@
         e.preventDefault();
         if (!onsave || saving) return;
         if (!hotkeyKey.trim()) {
-            hotkeyError = '请按下一个主键';
+            hotkeyError = "请按下一个主键";
             return;
         }
 
@@ -227,7 +244,6 @@
         saving = true;
         try {
             await onsave({ ...draft });
-            closeModal();
         } finally {
             saving = false;
         }
@@ -240,7 +256,7 @@
     }
 
     function handleBackdropKeydown(e: KeyboardEvent) {
-        if (e.key === 'Escape') {
+        if (e.key === "Escape") {
             closeModal();
         }
     }
@@ -257,7 +273,12 @@
         <form class="settings-modal" onsubmit={handleSubmit}>
             <div class="modal-header">
                 <h2>设置</h2>
-                <button type="button" class="icon-btn" onclick={closeModal} aria-label="关闭设置">
+                <button
+                    type="button"
+                    class="icon-btn"
+                    onclick={closeModal}
+                    aria-label="关闭设置"
+                >
                     ×
                 </button>
             </div>
@@ -266,9 +287,14 @@
                 <div class="field">
                     <span class="field-label">快捷键</span>
                     <div class="hotkey-row">
-                        <select value={hotkeyModifier} oninput={handleHotkeyModifierChange}>
+                        <select
+                            value={hotkeyModifier}
+                            oninput={handleHotkeyModifierChange}
+                        >
                             {#each modifierOptions as option}
-                                <option value={option.value}>{option.label}</option>
+                                <option value={option.value}
+                                    >{option.label}</option
+                                >
                             {/each}
                         </select>
                         <input
@@ -302,7 +328,12 @@
 
                 <div class="field">
                     <span class="field-label">最大记录数</span>
-                    <input type="number" min="0" step="1" bind:value={draft.max_records} />
+                    <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        bind:value={draft.max_records}
+                    />
                     <small>0 代表无限制</small>
                 </div>
 
@@ -310,7 +341,10 @@
                     <div class="toggle-row">
                         <span class="field-label">开机启动</span>
                         <label class="switch">
-                            <input type="checkbox" bind:checked={draft.auto_start} />
+                            <input
+                                type="checkbox"
+                                bind:checked={draft.auto_start}
+                            />
                             <span class="switch-slider"></span>
                         </label>
                     </div>
@@ -320,22 +354,31 @@
                 <div class="field">
                     <span class="field-label">收藏导入导出</span>
                     <div class="transfer-row">
-                        <button type="button" class="ghost-btn" onclick={() => onopenimport?.()}>
+                        <button
+                            type="button"
+                            class="ghost-btn"
+                            onclick={() => onopenimport?.()}
+                        >
                             导入
                         </button>
-                        <button type="button" class="ghost-btn" onclick={() => onopenexport?.()}>
+                        <button
+                            type="button"
+                            class="ghost-btn"
+                            onclick={() => onopenexport?.()}
+                        >
                             导出
                         </button>
                     </div>
                     <small>文件格式为JSON,导入为增量模式</small>
                 </div>
-
             </div>
 
             <div class="modal-footer">
-                <button type="button" class="ghost-btn" onclick={closeModal}>取消</button>
+                <button type="button" class="ghost-btn" onclick={closeModal}
+                    >取消</button
+                >
                 <button type="submit" class="primary-btn" disabled={saving}>
-                    {saving ? '保存中...' : '保存'}
+                    {saving ? "保存中..." : "保存"}
                 </button>
             </div>
         </form>
@@ -393,7 +436,10 @@
         cursor: pointer;
         font-size: 18px;
         line-height: 1;
-        transition: background-color 0.16s, transform 0.16s, box-shadow 0.16s;
+        transition:
+            background-color 0.16s,
+            transform 0.16s,
+            box-shadow 0.16s;
     }
 
     .icon-btn:hover {
@@ -514,11 +560,13 @@
         border-radius: 999px;
         background: var(--bg-secondary);
         border: 1px solid var(--border-color);
-        transition: background-color 0.16s, border-color 0.16s;
+        transition:
+            background-color 0.16s,
+            border-color 0.16s;
     }
 
     .switch-slider::after {
-        content: '';
+        content: "";
         position: absolute;
         top: 3px;
         left: 3px;
@@ -557,7 +605,10 @@
         color: var(--text-primary);
         cursor: pointer;
         font-size: 13px;
-        transition: transform 0.16s, filter 0.16s, box-shadow 0.16s;
+        transition:
+            transform 0.16s,
+            filter 0.16s,
+            box-shadow 0.16s;
     }
 
     .primary-btn {
