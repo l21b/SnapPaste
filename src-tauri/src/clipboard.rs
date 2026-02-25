@@ -181,7 +181,6 @@ fn image_signature(width: usize, height: usize, rgba: &[u8]) -> String {
     format!("image:{}:{}:{}", width, height, hasher.finish())
 }
 
-
 /// 设置剪贴板文本（使用 arboard）
 pub fn set_clipboard_text(text: &str) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
@@ -489,16 +488,12 @@ fn spawn_event_driven_monitor(
                 app: app.clone(),
             };
 
-            match Master::new(handler) {
-                Ok(mut master) => {
-                    retry_delay_ms = EVENT_MONITOR_RETRY_MIN_MS;
+            if let Ok(mut master) = Master::new(handler) {
+                retry_delay_ms = EVENT_MONITOR_RETRY_MIN_MS;
 
-                    if master.run().is_err() {
-                    } else {
-                        break;
-                    }
+                if master.run().is_ok() {
+                    break;
                 }
-                Err(_) => {}
             }
 
             if !is_monitor_session_active(session_id) {
@@ -598,4 +593,3 @@ pub async fn paste_record_content(app: AppHandle, id: i64) -> Result<(), String>
         Ok(())
     })
 }
-

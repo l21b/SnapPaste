@@ -11,10 +11,8 @@ pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), 
         manager
             .enable()
             .map_err(|e| format!("failed to enable auto start: {}", e))?;
-    } else {
-        if let Err(e) = manager.disable() {
-            eprintln!("[WARN] auto start disable skipped: {}", e);
-        }
+    } else if let Err(e) = manager.disable() {
+        eprintln!("[WARN] auto start disable skipped: {}", e);
     }
     Ok(())
 }
