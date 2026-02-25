@@ -54,6 +54,21 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Release Notes
+        shell: bash
+        run: |
+          echo "## Updates" > release_notes.md
+          # 尝试获取上一个 tag，如果有的话，就获取上一个 tag 到现在的 commit
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s" >> release_notes.md
+          else
+            # 如果没有上一个 tag，就获取所有 commit（或者你想要限制数量也可以用 -n 10）
+            git log --pretty=format:"- %s" >> release_notes.md
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -94,7 +109,7 @@ jobs:
             src-tauri/target/release/SnapPaste-windows-64-setup.zip
           tag_name: ${{ github.ref_name }}
           name: "${{ github.ref_name }}"
-          body: "## Updates"
+          body_path: release_notes.md
           draft: true 
           prerelease: false
         env:
