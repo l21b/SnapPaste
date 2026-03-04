@@ -76,9 +76,6 @@
 >
     <div class="item-header">
         <span class="item-type">{getTypeLabel(record.content_type)}</span>
-        {#if record.source_app && record.source_app !== "Unknown"}
-            <span class="item-source">{record.source_app}</span>
-        {/if}
     </div>
     <div class="item-content">
         {#if record.content_type === "text" || record.content_type === "link"}
@@ -198,13 +195,6 @@
         font-weight: 500;
         font-size: 10px;
         letter-spacing: 0.02em;
-    }
-
-    .item-source {
-        color: var(--text-tertiary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     .item-content {

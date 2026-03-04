@@ -23,13 +23,15 @@ tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
 chrono = { version = "0.4", features = ["serde"] }
 arboard = "3.4"
-enigo = "0.1"
-opener = "0.7"
+enigo = "0.6.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
@@ -37,7 +39,13 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_Storage_FileSystem",
 ] }
+windows = { version = "0.58", features = [
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_UI_Accessibility",
+] }
 clipboard-master = "4"
+reqwest = { version = "0.12", features = ["json"] }
 
 [profile.release]
 lto = true

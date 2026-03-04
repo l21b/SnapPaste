@@ -8,10 +8,6 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-开发计划.md
-学习笔记.md
-优化报告.md
-snappaste.db
+doc.md
 /.claude
 /.vscode
-rename.ps1

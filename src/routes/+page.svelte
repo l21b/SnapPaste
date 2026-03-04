@@ -8,6 +8,7 @@
     import SearchBar from "$lib/components/SearchBar.svelte";
     import ClipboardList from "$lib/components/ClipboardList.svelte";
     import SettingsModal from "$lib/components/SettingsModal.svelte";
+    import Dialog from "$lib/components/Dialog.svelte";
 
     type ExportFavoritesResult = {
         count: number;
@@ -27,6 +28,7 @@
     let unlistenMainWindowOpened: UnlistenFn | null = null;
     let unlistenHistoryChanged: UnlistenFn | null = null;
     let unlistenHotkeyFailed: UnlistenFn | null = null;
+    let unlistenAiShortcut: UnlistenFn | null = null;
     let settingsOpen = $state(false);
     let aboutOpen = $state(false);
     let appVersion = $state("0.1.0");
@@ -37,13 +39,18 @@
     let addFavoriteSaving = $state(false);
     let searchBarRef: { focusInput: () => void } | null = null;
     let settings = $state<Settings>({
-        hotkey_modifiers: 0,
-        hotkey_key: 0,
-        hotkey: "Ctrl+Shift+V",
+        hotkey: "Alt+Z",
         theme: "system",
         keep_days: 1,
         max_records: 500,
         auto_start: false,
+        ai_enabled: false,
+        ai_hotkey: "Ctrl+Shift+A",
+        ai_api_url: "",
+        ai_api_key: "",
+        ai_model: "gpt-3.5-turbo",
+        ai_prompt: "请润色以下文字，使其更加流畅，专业：",
+        ai_temperature: 0.3,
     });
 
     // 获取记录数量限制，0 代表无限制（SQLite LIMIT -1 = 无限制）
@@ -362,6 +369,21 @@
         focusSearchInput(0);
     }
 
+    // AI 文字处理函数
+    async function handleAiProcess(selectedText: string) {
+        try {
+            // 调用后端 AI 处理
+            const resultText = await invoke<string>("process_ai_text", {
+                selectedText,
+            });
+
+            // 调用后端命令写入剪贴板并粘贴
+            await invoke("paste_ai_result", { text: resultText });
+        } catch (error) {
+            alert(`AI 处理失败: ${error}`);
+        }
+    }
+
     function openExportFromSettings() {
         settingsOpen = false;
         focusSearchInput(0);
@@ -401,12 +423,16 @@
                     filters: [{ name: "JSON", extensions: ["json"] }],
                 });
                 if (!selected || Array.isArray(selected)) return;
-                const count = await invoke<number>(
-                    "import_favorites_from_path",
-                    { path: selected },
-                );
-                window.alert(`导入完成，新增 ${count} 条收藏`);
+                const [count, settingsImported] = await invoke<
+                    [number, boolean]
+                >("import_favorites_from_path", { path: selected });
+                let msg = `导入完成，新增 ${count} 条收藏`;
+                if (settingsImported) {
+                    msg += "，设置已更新";
+                }
+                window.alert(msg);
                 await loadHistory();
+                await loadSettings();
             } catch (error) {
                 window.alert(`导入失败: ${String(error)}`);
             }
@@ -497,6 +523,37 @@
                 );
             });
 
+        // AI 快捷键事件监听
+        listen<{ selected_text: string }>(
+            "ai-shortcut-triggered",
+            async (event) => {
+                console.log("[AI] Received ai-shortcut-triggered event");
+                const selectedText = event.payload.selected_text;
+                console.log("[AI] Selected text length:", selectedText?.length);
+
+                // 判断是否有选中文本
+                const hasSelection =
+                    selectedText && selectedText.trim().length > 0;
+                console.log("[AI] Has selection:", hasSelection);
+
+                if (!hasSelection) {
+                    // 没有选中文本 - 可以在此实现其他功能（如弹出输入框）
+                    console.log("[AI] No text selected - 暂未实现");
+                    return;
+                }
+
+                // 有选中文本 - 执行 AI 处理
+                console.log("[AI] Calling handleAiProcess...");
+                await handleAiProcess(selectedText);
+            },
+        )
+            .then((unlisten) => {
+                unlistenAiShortcut = unlisten;
+            })
+            .catch((error) => {
+                console.error("Failed to listen ai-shortcut-triggered:", error);
+            });
+
         void refreshHistory();
         focusSearchInput(16);
 
@@ -516,6 +573,9 @@
             if (unlistenHotkeyFailed) {
                 unlistenHotkeyFailed();
             }
+            if (unlistenAiShortcut) {
+                unlistenAiShortcut();
+            }
             if (historyRefreshDebounceTimer) {
                 clearTimeout(historyRefreshDebounceTimer);
                 historyRefreshDebounceTimer = undefined;
@@ -530,10 +590,23 @@
             }
         };
     });
+
+    async function handleMouseDown(e: MouseEvent) {
+        // 只有左键点击且不是点击在按钮上时才触发拖动
+        if (e.button === 0 && !(e.target as HTMLElement).closest("button")) {
+            // 防止浏览器处理点击事件，避免导致搜索栏光标在系统接管拖拽后卡死
+            e.preventDefault();
+            try {
+                await invoke("start_window_drag");
+            } catch (error) {
+                console.error("Failed to start drag:", error);
+            }
+        }
+    }
 </script>
 
 <main class="app">
-    <header class="header">
+    <header class="header" role="presentation" onmousedown={handleMouseDown}>
         <h1>{pageTitle()}</h1>
         <div class="header-actions">
             <button
@@ -728,6 +801,8 @@
             </div>
         </div>
     {/if}
+
+    <Dialog />
 </main>
 
 <style>
@@ -845,6 +920,8 @@
         padding: 14px 18px;
         border-bottom: 1px solid var(--border-color);
         background: var(--bg-primary);
+        cursor: default;
+        user-select: none;
     }
 
     h1 {

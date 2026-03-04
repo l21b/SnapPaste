@@ -16,6 +16,7 @@
     let hotkeyModifier = $state("Ctrl+Shift");
     let hotkeyKey = $state("V");
     let hotkeyError = $state("");
+    let aiSettingsOpen = $state(false);
 
     const modifierOptions = [
         { value: "", label: "无修饰键" },
@@ -28,13 +29,18 @@
     ] as const;
 
     let draft = $state<Settings>({
-        hotkey_modifiers: 0,
-        hotkey_key: 0,
-        hotkey: "Ctrl+Shift+V",
+        hotkey: "Alt+Z",
         theme: "system",
         keep_days: 1,
         max_records: 500,
         auto_start: false,
+        ai_enabled: false,
+        ai_hotkey: "Ctrl+Shift+A",
+        ai_api_url: "",
+        ai_api_key: "",
+        ai_model: "gpt-3.5-turbo",
+        ai_prompt: "请润色以下文字，使其更加流畅，专业：",
+        ai_temperature: 0.3,
     });
 
     function normalizeModifiers(values: string[]): string {
@@ -351,6 +357,85 @@
                     <small>保存后立即生效</small>
                 </div>
 
+                <div class="divider"></div>
+
+                <div class="field">
+                    <div class="toggle-row">
+                        <span class="field-label">AI 文字润色</span>
+                        <label class="switch">
+                            <input
+                                type="checkbox"
+                                bind:checked={draft.ai_enabled}
+                            />
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                    <small>选中文字后按快捷键进行润色</small>
+                </div>
+
+                {#if draft.ai_enabled}
+                    <button
+                        type="button"
+                        class="ghost-btn"
+                        onclick={() => (aiSettingsOpen = !aiSettingsOpen)}
+                    >
+                        {aiSettingsOpen ? "收起设置" : "展开设置"}
+                    </button>
+
+                    {#if aiSettingsOpen}
+                        <div class="ai-settings">
+                            <div class="field">
+                                <span class="field-label">API 端点</span>
+                                <input
+                                    type="text"
+                                    bind:value={draft.ai_api_url}
+                                    placeholder="https://api.openai.com/v1/chat/completions"
+                                />
+                                <small>支持兼容 OpenAI API 的服务端点</small>
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">API Key</span>
+                                <input
+                                    type="password"
+                                    bind:value={draft.ai_api_key}
+                                    placeholder="sk-..."
+                                />
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">模型</span>
+                                <input
+                                    type="text"
+                                    bind:value={draft.ai_model}
+                                    placeholder="gpt-3.5-turbo"
+                                />
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">提示词</span>
+                                <textarea
+                                    bind:value={draft.ai_prompt}
+                                    rows="2"
+                                    placeholder="请润色以下文字，使其更加流畅，专业："
+                                ></textarea>
+                            </div>
+
+                            <div class="field">
+                                <span class="field-label">Temperature ({draft.ai_temperature})</span>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    bind:value={draft.ai_temperature}
+                                />
+                                <span class="hint">0 = 稳定输出, 1 = 创意随机</span>
+                            </div>
+                        </div>
+                    {/if}
+                {/if}
+
                 <div class="field">
                     <span class="field-label">收藏导入导出</span>
                     <div class="transfer-row">
@@ -522,6 +607,40 @@
     .hotkey-input {
         text-align: center;
         letter-spacing: 0.2px;
+    }
+
+    .divider {
+        height: 1px;
+        background: var(--border-color);
+        margin: 16px 0;
+    }
+
+    .ai-settings {
+        padding: 12px;
+        background: var(--bg-secondary);
+        border-radius: 6px;
+        margin-top: 8px;
+    }
+
+    .ai-settings .field {
+        margin-bottom: 12px;
+    }
+
+    .ai-settings textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background: var(--input-bg);
+        color: var(--text-color);
+        font-size: 13px;
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .ai-settings textarea:focus {
+        outline: none;
+        border-color: var(--primary-color);
     }
 
     .transfer-row {
