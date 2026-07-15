@@ -50,10 +50,14 @@ impl HotkeyManager {
             .register(new_shortcut)
             .map_err(|e| format!("注册冲突或失败: {}", e))?;
 
-        // 如果该 ID 之前已绑定过快捷键，则在成功绑定新快捷键后，注销旧的
-        if let Some(old_shortcut) = inner.shortcuts.insert(id.to_string(), new_shortcut) {
-            let _ = manager.unregister(old_shortcut);
+        // 只有旧快捷键成功注销后才更新内存状态；失败时撤销新注册。
+        if let Some(old_shortcut) = inner.shortcuts.get(id).cloned()
+            && let Err(error) = manager.unregister(old_shortcut)
+        {
+            let _ = manager.unregister(new_shortcut);
+            return Err(format!("无法注销旧快捷键: {}", error));
         }
+        inner.shortcuts.insert(id.to_string(), new_shortcut);
 
         Ok(())
     }
@@ -64,8 +68,11 @@ impl HotkeyManager {
         let manager = app.global_shortcut();
 
         // 从内部映射中移除并取消系统注册
-        if let Some(old_shortcut) = inner.shortcuts.remove(id) {
-            let _ = manager.unregister(old_shortcut);
+        if let Some(old_shortcut) = inner.shortcuts.get(id).cloned() {
+            manager
+                .unregister(old_shortcut)
+                .map_err(|e| format!("无法注销快捷键: {}", e))?;
+            inner.shortcuts.remove(id);
         }
         Ok(())
     }

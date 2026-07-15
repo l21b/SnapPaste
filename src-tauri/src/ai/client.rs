@@ -57,7 +57,11 @@ pub fn create_ai_client() -> Result<Client, String> {
 }
 
 /// 调用 AI API 处理文本
-pub async fn process_text(client: &Client, config: &AiConfig<'_>, text: &str) -> Result<String, String> {
+pub async fn process_text(
+    client: &Client,
+    config: &AiConfig<'_>,
+    text: &str,
+) -> Result<String, String> {
     // 1. 构建完整的 API URL
     let full_url = if config.api_url.ends_with("/chat/completions") {
         // 如果用户已提供完整 URL，直接使用
@@ -104,10 +108,7 @@ pub async fn process_text(client: &Client, config: &AiConfig<'_>, text: &str) ->
     if !response.status().is_success() {
         let status = response.status();
         let error_body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "API 报错 (状态码 {}): {}",
-            status, error_body
-        ));
+        return Err(format!("API 报错 (状态码 {}): {}", status, error_body));
     }
 
     // 6. 解析 JSON 响应

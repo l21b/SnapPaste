@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 内容类型枚举
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentType {
     Text,

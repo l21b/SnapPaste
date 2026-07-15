@@ -1,6 +1,5 @@
-use tauri::AppHandle;
-use crate::clipboard::services::process_ai_text_logic;
 use super::CmdResult;
+use tauri::AppHandle;
 
 /// 暂停窗口自动隐藏
 #[tauri::command]
@@ -27,27 +26,50 @@ pub fn start_window_drag(window: tauri::WebviewWindow) -> CmdResult<()> {
 #[tauri::command]
 pub fn open_url(app: AppHandle, url: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
-    app.opener().open_url(&url, None::<String>).map_err(|e| e.to_string())
+    let url = normalize_external_url(&url)?;
+    app.opener()
+        .open_url(&url, None::<String>)
+        .map_err(|e| e.to_string())
 }
 
-/// 粘贴 AI 处理结果
-#[tauri::command]
-pub fn paste_ai_result(text: String, _app: AppHandle) -> CmdResult<()> {
-    if text.trim().is_empty() {
-        return Err("text is empty".to_string());
+fn normalize_external_url(value: &str) -> CmdResult<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("链接不能为空".to_string());
     }
-    use crate::clipboard::write_text;
-    use crate::keyboard::keyboard::simulate_paste;
-    write_text(&text).map_err(|e| e.to_string())?;
-    simulate_paste(5).map_err(|e| e.to_string())?;
-    Ok(())
+
+    let normalized = if value.to_ascii_lowercase().starts_with("www.") {
+        format!("https://{value}")
+    } else {
+        value.to_string()
+    };
+    let lower = normalized.to_ascii_lowercase();
+    if !lower.starts_with("https://") && !lower.starts_with("http://") {
+        return Err("只允许打开 HTTP 或 HTTPS 链接".to_string());
+    }
+
+    Ok(normalized)
 }
 
-/// 调用 AI 润色文本
-#[tauri::command]
-pub async fn process_ai_text(
-    selected_text: String,
-    client: tauri::State<'_, reqwest::Client>,
-) -> CmdResult<String> {
-    process_ai_text_logic(&client, &selected_text).await
+#[cfg(test)]
+mod tests {
+    use super::normalize_external_url;
+
+    #[test]
+    fn external_url_accepts_http_and_adds_scheme_for_www() {
+        assert_eq!(
+            normalize_external_url("www.example.com").expect("normalize URL"),
+            "https://www.example.com"
+        );
+        assert_eq!(
+            normalize_external_url("https://example.com").expect("normalize URL"),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn external_url_rejects_non_web_schemes() {
+        assert!(normalize_external_url("file:///C:/secret.txt").is_err());
+        assert!(normalize_external_url("javascript:alert(1)").is_err());
+    }
 }

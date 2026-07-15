@@ -1,5 +1,9 @@
 <script lang="ts">
     import type { Settings } from "$lib/types";
+    import { formatHotkey, parseHotkey } from "$lib/hotkey";
+    import { createDefaultSettings } from "$lib/settings";
+    import BasicSettings from "./settings/BasicSettings.svelte";
+    import DataTransferSettings from "./settings/DataTransferSettings.svelte";
 
     interface Props {
         open: boolean;
@@ -13,240 +17,29 @@
     let { open, settings, onsave, onopenimport, onopenexport, onclose }: Props =
         $props();
     let saving = $state(false);
-    let hotkeyModifier = $state("Ctrl+Shift");
-    let hotkeyKey = $state("V");
-    let hotkeyError = $state("");
-    let aiSettingsOpen = $state(false);
-
-    const modifierOptions = [
-        { value: "", label: "无修饰键" },
-        { value: "Ctrl", label: "Ctrl" },
-        { value: "Alt", label: "Alt" },
-        { value: "Shift", label: "Shift" },
-        { value: "Ctrl+Alt", label: "Ctrl + Alt" },
-        { value: "Ctrl+Shift", label: "Ctrl + Shift" },
-        { value: "Alt+Shift", label: "Alt + Shift" },
-    ] as const;
-
-    let draft = $state<Settings>({
-        hotkey: "Alt+Z",
-        theme: "system",
-        keep_days: 1,
-        max_records: 500,
-        auto_start: false,
-        ai_enabled: false,
-        ai_hotkey: "Ctrl+Shift+A",
-        ai_api_url: "",
-        ai_api_key: "",
-        ai_model: "gpt-3.5-turbo",
-        ai_prompt: "请润色以下文字，使其更加流畅，专业：",
-        ai_temperature: 0.3,
-    });
-
-    function normalizeModifiers(values: string[]): string {
-        const hasCtrl = values.includes("Ctrl");
-        const hasAlt = values.includes("Alt");
-        const hasShift = values.includes("Shift");
-        const normalized = [
-            hasCtrl ? "Ctrl" : "",
-            hasAlt ? "Alt" : "",
-            hasShift ? "Shift" : "",
-        ].filter(Boolean);
-        return normalized.join("+");
-    }
-
-    function parseHotkey(hotkey: string): { modifier: string; key: string } {
-        const tokens = hotkey
-            .split("+")
-            .map((t) => t.trim())
-            .filter(Boolean);
-
-        if (tokens.length === 0) {
-            return { modifier: "Ctrl+Shift", key: "V" };
-        }
-
-        const key = normalizeKeyToken(tokens[tokens.length - 1]);
-        const modTokens = tokens
-            .slice(0, -1)
-            .map((t) => {
-                const upper = t.toUpperCase();
-                if (upper === "CTRL" || upper === "CONTROL") return "Ctrl";
-                if (upper === "ALT" || upper === "OPTION") return "Alt";
-                if (upper === "SHIFT") return "Shift";
-                return "";
-            })
-            .filter(Boolean);
-
-        const modifier = normalizeModifiers(modTokens);
-        const hasOption = modifierOptions.some((o) => o.value === modifier);
-        return {
-            modifier: hasOption ? modifier : "",
-            key: key || "V",
-        };
-    }
-
-    function normalizeKeyToken(raw: string): string {
-        const token = raw.trim();
-        if (!token) return "";
-
-        if (/^[a-zA-Z0-9]$/.test(token)) {
-            return token.toUpperCase();
-        }
-
-        const upper = token.toUpperCase();
-        if (/^KEY[A-Z]$/.test(upper)) {
-            return upper.slice(3);
-        }
-        if (/^DIGIT[0-9]$/.test(upper)) {
-            return upper.slice(5);
-        }
-        if (/^F([1-9]|1[0-9]|2[0-4])$/.test(upper)) {
-            return upper;
-        }
-        if (/^NUMPAD[0-9]$/.test(upper)) {
-            return `Numpad${upper.slice(6)}`;
-        }
-
-        switch (upper) {
-            case "ESCAPE":
-            case "ESC":
-                return "Esc";
-            case " ":
-            case "SPACE":
-            case "SPACEBAR":
-                return "Space";
-            case "ARROWUP":
-                return "ArrowUp";
-            case "ARROWDOWN":
-                return "ArrowDown";
-            case "ARROWLEFT":
-                return "ArrowLeft";
-            case "ARROWRIGHT":
-                return "ArrowRight";
-            default:
-                return token;
-        }
-    }
-
-    function keyLabel(token: string): string {
-        if (/^Numpad[0-9]$/.test(token)) {
-            return token.replace("Numpad", "Num");
-        }
-        return token;
-    }
-
-    function formatHotkey(modifier: string, key: string): string {
-        if (!modifier) return key;
-        return `${modifier}+${key}`;
-    }
-
-    function keyTokenFromEvent(e: KeyboardEvent): string {
-        if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
-            return "";
-        }
-
-        if (/^Key[A-Z]$/.test(e.code)) {
-            return e.code.slice(3);
-        }
-
-        if (/^Digit[0-9]$/.test(e.code)) {
-            return e.code.slice(5);
-        }
-
-        if (/^Numpad[0-9]$/.test(e.code)) {
-            return e.code;
-        }
-
-        if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(e.code)) {
-            return e.code.toUpperCase();
-        }
-
-        if (/^[a-zA-Z0-9]$/.test(e.key)) {
-            return e.key.toUpperCase();
-        }
-
-        switch (e.key) {
-            case "ArrowUp":
-                return "ArrowUp";
-            case "ArrowDown":
-                return "ArrowDown";
-            case "ArrowLeft":
-                return "ArrowLeft";
-            case "ArrowRight":
-                return "ArrowRight";
-            case "Enter":
-                return "Enter";
-            case "Tab":
-                return "Tab";
-            case "Escape":
-                return "Esc";
-            case "Backspace":
-                return "Backspace";
-            case "Delete":
-                return "Delete";
-            case "Insert":
-                return "Insert";
-            case "Home":
-                return "Home";
-            case "End":
-                return "End";
-            case "PageUp":
-                return "PageUp";
-            case "PageDown":
-                return "PageDown";
-            case " ":
-                return "Space";
-            default:
-                return normalizeKeyToken(e.key);
-        }
-    }
-
-    function updateDraftHotkey() {
-        draft.hotkey = formatHotkey(hotkeyModifier, hotkeyKey);
-    }
-
-    function closeModal() {
-        onclose?.();
-    }
-
-    function handleHotkeyModifierChange(e: Event) {
-        hotkeyModifier = (e.target as HTMLSelectElement).value;
-        hotkeyError = "";
-        updateDraftHotkey();
-    }
-
-    function handleHotkeyKeydown(e: KeyboardEvent) {
-        e.preventDefault();
-        const token = keyTokenFromEvent(e);
-        if (!token) return;
-        hotkeyKey = token;
-        hotkeyError = "";
-        updateDraftHotkey();
-    }
+    let draft = $state<Settings>(createDefaultSettings());
 
     $effect(() => {
-        // 显式跟踪 open 和 settings 的变化
-        if (open) {
-            const parsed = parseHotkey(settings.hotkey);
-            draft = {
-                ...settings,
-                hotkey: formatHotkey(parsed.modifier, parsed.key),
-            };
-            hotkeyModifier = parsed.modifier;
-            hotkeyKey = parsed.key;
-            hotkeyError = "";
-        }
+        if (!open) return;
+        const parsed = parseHotkey(settings.hotkey);
+        draft = {
+            ...settings,
+            hotkey: formatHotkey(parsed.modifier, parsed.key),
+        };
     });
 
-    async function handleSubmit(e: Event) {
-        e.preventDefault();
-        if (!onsave || saving) return;
-        if (!hotkeyKey.trim()) {
-            hotkeyError = "请按下一个主键";
-            return;
-        }
+    function closeModal() {
+        if (!saving) onclose?.();
+    }
 
-        updateDraftHotkey();
+    function handleWindowKeydown(event: KeyboardEvent) {
+        if (open && event.key === "Escape") closeModal();
+    }
+
+    async function handleSubmit(event: SubmitEvent) {
+        event.preventDefault();
+        if (!onsave || saving || !draft.hotkey.trim()) return;
+
         saving = true;
         try {
             await onsave({ ...draft });
@@ -254,29 +47,24 @@
             saving = false;
         }
     }
-
-    function handleBackdropClick(e: MouseEvent) {
-        if (e.target === e.currentTarget) {
-            closeModal();
-        }
-    }
-
-    function handleBackdropKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape") {
-            closeModal();
-        }
-    }
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 {#if open}
-    <div
-        class="settings-backdrop"
-        role="button"
-        tabindex="0"
-        onclick={handleBackdropClick}
-        onkeydown={handleBackdropKeydown}
-    >
-        <form class="settings-modal" onsubmit={handleSubmit}>
+    <div class="settings-backdrop">
+        <button
+            type="button"
+            class="backdrop-dismiss"
+            tabindex="-1"
+            onclick={closeModal}
+            aria-label="关闭设置"
+        ></button>
+        <form
+            class="settings-modal"
+            aria-label="设置"
+            onsubmit={handleSubmit}
+        >
             <div class="modal-header">
                 <h2>设置</h2>
                 <button
@@ -284,184 +72,28 @@
                     class="icon-btn"
                     onclick={closeModal}
                     aria-label="关闭设置"
-                >
-                    ×
-                </button>
+                >×</button>
             </div>
 
             <div class="modal-body">
-                <div class="field">
-                    <span class="field-label">快捷键</span>
-                    <div class="hotkey-row">
-                        <select
-                            value={hotkeyModifier}
-                            oninput={handleHotkeyModifierChange}
-                        >
-                            {#each modifierOptions as option}
-                                <option value={option.value}
-                                    >{option.label}</option
-                                >
-                            {/each}
-                        </select>
-                        <input
-                            type="text"
-                            class="hotkey-input"
-                            value={keyLabel(hotkeyKey)}
-                            placeholder="按下按键"
-                            readonly
-                            onkeydown={handleHotkeyKeydown}
-                        />
-                    </div>
-                    {#if hotkeyError}
-                        <small class="error">{hotkeyError}</small>
-                    {/if}
-                </div>
+                <BasicSettings
+                    bind:hotkey={draft.hotkey}
+                    bind:theme={draft.theme}
+                    bind:keepDays={draft.keep_days}
+                    bind:maxRecords={draft.max_records}
+                    bind:autoStart={draft.auto_start}
+                />
 
-                <div class="field">
-                    <span class="field-label">主题</span>
-                    <select bind:value={draft.theme}>
-                        <option value="system">跟随系统</option>
-                        <option value="light">浅色</option>
-                        <option value="dark">深色</option>
-                    </select>
-                </div>
-
-                <div class="field">
-                    <span class="field-label">记录保留天数</span>
-                    <input type="number" min="0" bind:value={draft.keep_days} />
-                    <small>0 代表永久保存</small>
-                </div>
-
-                <div class="field">
-                    <span class="field-label">最大记录数</span>
-                    <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        bind:value={draft.max_records}
-                    />
-                    <small>0 代表无限制</small>
-                </div>
-
-                <div class="field">
-                    <div class="toggle-row">
-                        <span class="field-label">开机启动</span>
-                        <label class="switch">
-                            <input
-                                type="checkbox"
-                                bind:checked={draft.auto_start}
-                            />
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-                    <small>保存后立即生效</small>
-                </div>
-
-                <div class="divider"></div>
-
-                <div class="field">
-                    <div class="toggle-row">
-                        <span class="field-label">AI 文字润色</span>
-                        <label class="switch">
-                            <input
-                                type="checkbox"
-                                bind:checked={draft.ai_enabled}
-                            />
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-                    <small>选中文字后按快捷键进行润色</small>
-                </div>
-
-                {#if draft.ai_enabled}
-                    <button
-                        type="button"
-                        class="ghost-btn"
-                        onclick={() => (aiSettingsOpen = !aiSettingsOpen)}
-                    >
-                        {aiSettingsOpen ? "收起设置" : "展开设置"}
-                    </button>
-
-                    {#if aiSettingsOpen}
-                        <div class="ai-settings">
-                            <div class="field">
-                                <span class="field-label">API 端点</span>
-                                <input
-                                    type="text"
-                                    bind:value={draft.ai_api_url}
-                                    placeholder="https://api.openai.com/v1/chat/completions"
-                                />
-                                <small>支持兼容 OpenAI API 的服务端点</small>
-                            </div>
-
-                            <div class="field">
-                                <span class="field-label">API Key</span>
-                                <input
-                                    type="password"
-                                    bind:value={draft.ai_api_key}
-                                    placeholder="sk-..."
-                                />
-                            </div>
-
-                            <div class="field">
-                                <span class="field-label">模型</span>
-                                <input
-                                    type="text"
-                                    bind:value={draft.ai_model}
-                                    placeholder="gpt-3.5-turbo"
-                                />
-                            </div>
-
-                            <div class="field">
-                                <span class="field-label">提示词</span>
-                                <textarea
-                                    bind:value={draft.ai_prompt}
-                                    rows="2"
-                                    placeholder="请润色以下文字，使其更加流畅，专业："
-                                ></textarea>
-                            </div>
-
-                            <div class="field">
-                                <span class="field-label">Temperature ({draft.ai_temperature})</span>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.1"
-                                    bind:value={draft.ai_temperature}
-                                />
-                                <span class="hint">0 = 稳定输出, 1 = 创意随机</span>
-                            </div>
-                        </div>
-                    {/if}
-                {/if}
-
-                <div class="field">
-                    <span class="field-label">收藏导入导出</span>
-                    <div class="transfer-row">
-                        <button
-                            type="button"
-                            class="ghost-btn"
-                            onclick={() => onopenimport?.()}
-                        >
-                            导入
-                        </button>
-                        <button
-                            type="button"
-                            class="ghost-btn"
-                            onclick={() => onopenexport?.()}
-                        >
-                            导出
-                        </button>
-                    </div>
-                    <small>文件格式为JSON,导入为增量模式</small>
-                </div>
+                <DataTransferSettings
+                    onimport={onopenimport}
+                    onexport={onopenexport}
+                />
             </div>
 
             <div class="modal-footer">
-                <button type="button" class="ghost-btn" onclick={closeModal}
-                    >取消</button
-                >
+                <button type="button" class="ghost-btn" onclick={closeModal}>
+                    取消
+                </button>
                 <button type="submit" class="primary-btn" disabled={saving}>
                     {saving ? "保存中..." : "保存"}
                 </button>
@@ -474,27 +106,39 @@
     .settings-backdrop {
         position: fixed;
         inset: 0;
+        z-index: 10;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 6px;
         background: rgba(0, 0, 0, 0.5);
-        z-index: 10;
+    }
+
+    .backdrop-dismiss {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        cursor: default;
+        background: transparent;
+        border: 0;
     }
 
     .settings-modal {
+        position: relative;
+        display: flex;
+        flex-direction: column;
         width: min(92vw, 260px);
         min-width: 240px;
         max-width: 100%;
         height: min(380px, calc(100vh - 12px));
         min-height: 280px;
-        display: flex;
-        flex-direction: column;
+        overflow: hidden;
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
         border-radius: 16px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
     }
 
     .modal-header {
@@ -505,204 +149,173 @@
         border-bottom: 1px solid var(--border-color);
     }
 
-    .modal-header h2 {
+    h2 {
         margin: 0;
-        font-size: 15px;
         color: var(--text-primary);
+        font-size: 15px;
     }
 
     .icon-btn {
         width: 28px;
         height: 28px;
-        border: none;
-        border-radius: 6px;
-        background: transparent;
         color: var(--text-tertiary);
-        cursor: pointer;
         font-size: 18px;
         line-height: 1;
-        transition:
-            background-color 0.16s,
-            transform 0.16s,
-            box-shadow 0.16s;
+        cursor: pointer;
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
     }
 
     .icon-btn:hover {
         background: var(--bg-hover);
-        transform: translateY(-1px) scale(1.05);
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+        transform: translateY(-1px) scale(1.05);
     }
 
     .modal-body {
-        flex: 1;
-        min-height: 0;
         display: flex;
+        flex: 1;
         flex-direction: column;
         gap: 8px;
+        min-height: 0;
         padding: 10px 12px;
-        overflow-y: auto;
         overflow-x: hidden;
+        overflow-y: auto;
     }
 
-    .field {
+    .settings-modal :global(.field) {
         display: flex;
         flex-direction: column;
         gap: 4px;
     }
 
-    .field-label {
-        font-size: 12px;
+    .settings-modal :global(.field-label) {
         color: var(--text-primary);
+        font-size: 12px;
     }
 
-    .field small {
-        font-size: 10px;
+    .settings-modal :global(small),
+    .settings-modal :global(.hint) {
         color: var(--text-tertiary);
+        font-size: 10px;
         white-space: normal;
         overflow-wrap: anywhere;
     }
 
-    .error {
-        color: var(--danger-color);
-    }
-
-    input,
-    select {
+    .settings-modal :global(input),
+    .settings-modal :global(select) {
         width: 100%;
         min-width: 0;
         height: 32px;
+        padding: 0 8px;
+        color: var(--text-primary);
+        font-size: 12px;
+        background: var(--bg-secondary);
         border: 1px solid var(--border-color);
         border-radius: 8px;
-        padding: 0 8px;
-        font-size: 12px;
-        color: var(--text-primary);
-        background: var(--bg-secondary);
         outline: none;
     }
 
-    select option {
-        background: var(--bg-primary);
+    .settings-modal :global(select option) {
         color: var(--text-primary);
+        background: var(--bg-primary);
     }
 
-    input:focus,
-    select:focus {
+    .settings-modal :global(input:focus),
+    .settings-modal :global(select:focus),
+    .settings-modal :global(textarea:focus) {
         border-color: var(--accent-color);
+        outline: none;
     }
 
-    .hotkey-row {
+    .settings-modal :global(.hotkey-row),
+    .settings-modal :global(.transfer-row) {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
-        align-items: center;
     }
 
-    .hotkey-row select,
-    .hotkey-row .hotkey-input {
-        height: 30px;
-        padding: 0 6px;
-        font-size: 11px;
-    }
-
-    .hotkey-input {
+    .settings-modal :global(.hotkey-input) {
         text-align: center;
         letter-spacing: 0.2px;
     }
 
-    .divider {
-        height: 1px;
-        background: var(--border-color);
-        margin: 16px 0;
-    }
-
-    .ai-settings {
-        padding: 12px;
+    .settings-modal :global(.ai-settings) {
+        padding: 10px;
+        margin-top: 4px;
         background: var(--bg-secondary);
-        border-radius: 6px;
-        margin-top: 8px;
+        border-radius: 8px;
     }
 
-    .ai-settings .field {
-        margin-bottom: 12px;
+    .settings-modal :global(.ai-settings .field + .field) {
+        margin-top: 10px;
     }
 
-    .ai-settings textarea {
+    .settings-modal :global(.ai-settings textarea) {
         width: 100%;
         padding: 8px;
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        background: var(--input-bg);
-        color: var(--text-color);
-        font-size: 13px;
-        resize: vertical;
+        color: var(--text-primary);
         font-family: inherit;
+        font-size: 12px;
+        resize: vertical;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
     }
 
-    .ai-settings textarea:focus {
-        outline: none;
-        border-color: var(--primary-color);
-    }
-
-    .transfer-row {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
-    }
-
-    .toggle-row {
+    .settings-modal :global(.toggle-row) {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
     }
 
-    .switch {
+    .settings-modal :global(.switch) {
         position: relative;
+        display: inline-flex;
         width: 42px;
         height: 24px;
-        display: inline-flex;
     }
 
-    .switch input {
+    .settings-modal :global(.switch input) {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         margin: 0;
-        opacity: 0;
         cursor: pointer;
+        opacity: 0;
     }
 
-    .switch-slider {
+    .settings-modal :global(.switch-slider) {
         width: 100%;
         height: 100%;
-        border-radius: 999px;
         background: var(--bg-secondary);
         border: 1px solid var(--border-color);
-        transition:
-            background-color 0.16s,
-            border-color 0.16s;
+        border-radius: 999px;
+        transition: background-color 0.16s, border-color 0.16s;
     }
 
-    .switch-slider::after {
-        content: "";
+    .settings-modal :global(.switch-slider::after) {
         position: absolute;
         top: 3px;
         left: 3px;
         width: 16px;
         height: 16px;
-        border-radius: 50%;
+        content: "";
         background: #fff;
+        border-radius: 50%;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
         transition: transform 0.16s;
     }
 
-    .switch input:checked + .switch-slider {
+    .settings-modal :global(.switch input:checked + .switch-slider) {
         background: var(--accent-color);
         border-color: var(--accent-color);
     }
 
-    .switch input:checked + .switch-slider::after {
+    .settings-modal :global(.switch input:checked + .switch-slider::after) {
         transform: translateX(18px);
     }
 
@@ -714,50 +327,47 @@
         border-top: 1px solid var(--border-color);
     }
 
-    .ghost-btn,
+    .settings-modal :global(.ghost-btn),
     .primary-btn {
         height: 32px;
         padding: 0 12px;
-        border-radius: 8px;
-        border: 1px solid var(--border-color);
-        background: var(--bg-primary);
         color: var(--text-primary);
-        cursor: pointer;
         font-size: 13px;
-        transition:
-            transform 0.16s,
-            filter 0.16s,
-            box-shadow 0.16s;
+        cursor: pointer;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        transition: transform 0.16s, filter 0.16s, box-shadow 0.16s;
     }
 
     .primary-btn {
-        border-color: var(--accent-color);
-        background: var(--accent-color);
         color: #fff;
+        background: var(--accent-color);
+        border-color: var(--accent-color);
     }
 
-    .ghost-btn:hover {
-        transform: translateY(-1px);
-        background: var(--bg-hover);
-        color: var(--text-primary);
+    .settings-modal :global(.ghost-btn:hover),
+    .primary-btn:hover {
+        background-color: var(--bg-hover);
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+        transform: translateY(-1px);
     }
 
     .primary-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+        background-color: var(--accent-color);
+        filter: brightness(1.08);
     }
 
     .icon-btn:active,
-    .ghost-btn:active,
+    .settings-modal :global(.ghost-btn:active),
     .primary-btn:active {
-        transform: scale(0.96);
         box-shadow: none;
+        transform: scale(0.96);
     }
 
-    .ghost-btn:disabled,
+    .settings-modal :global(.ghost-btn:disabled),
     .primary-btn:disabled {
-        opacity: 0.6;
         cursor: not-allowed;
+        opacity: 0.6;
     }
 </style>

@@ -16,7 +16,7 @@ pub struct MonitorController {
     is_running: AtomicBool,
     session_id: AtomicU64,
     ignore_until_ms: AtomicU64,
-    paste_in_progress: AtomicBool, 
+    paste_in_progress: AtomicBool,
 }
 
 impl MonitorController {
@@ -30,7 +30,10 @@ impl MonitorController {
     }
 
     fn now_ms() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
     }
 
     fn check_and_mark_running(&self) -> bool {
@@ -38,15 +41,19 @@ impl MonitorController {
     }
 
     fn next_session_id(&self) -> u64 {
-        self.session_id.fetch_add(1, Ordering::SeqCst).saturating_add(1)
+        self.session_id
+            .fetch_add(1, Ordering::SeqCst)
+            .saturating_add(1)
     }
 
     fn is_session_active(&self, session_id: u64) -> bool {
-        self.is_running.load(Ordering::SeqCst) && self.session_id.load(Ordering::SeqCst) == session_id
+        self.is_running.load(Ordering::SeqCst)
+            && self.session_id.load(Ordering::SeqCst) == session_id
     }
 
     pub fn mark_ignore_changes_for_a_while(&self) {
-        self.ignore_until_ms.store(Self::now_ms() + IGNORE_WINDOW_MS, Ordering::SeqCst);
+        self.ignore_until_ms
+            .store(Self::now_ms() + IGNORE_WINDOW_MS, Ordering::SeqCst);
     }
 
     fn should_ignore(&self) -> bool {
@@ -97,8 +104,12 @@ pub(crate) fn mark_ignore_next_change() {
 // ==========================================
 
 fn handle_clipboard_event(app: &AppHandle) {
-    if CONTROLLER.should_ignore() { return; }
-    if CONTROLLER.is_paste_in_progress() { return; }
+    if CONTROLLER.should_ignore() {
+        return;
+    }
+    if CONTROLLER.is_paste_in_progress() {
+        return;
+    }
 
     if let Err(e) = crate::clipboard::processor::process_clipboard_change(app) {
         eprintln!("剪贴板处理大脑发生错误: {}", e);
@@ -117,7 +128,9 @@ fn run_polling_loop(session_id: u64, app: AppHandle) {
             continue;
         }
         thread::sleep(Duration::from_millis(500));
-        if !CONTROLLER.is_session_active(session_id) { break; }
+        if !CONTROLLER.is_session_active(session_id) {
+            break;
+        }
         handle_clipboard_event(&app);
     }
 }
@@ -156,17 +169,22 @@ fn spawn_event_driven_monitor(session_id: u64, app: AppHandle) {
         let mut retry_delay_ms = retry_min;
 
         while CONTROLLER.is_session_active(session_id) {
-            let handler = ClipboardEventHandler { session_id, app: app.clone() };
+            let handler = ClipboardEventHandler {
+                session_id,
+                app: app.clone(),
+            };
 
             match Master::new(handler) {
                 Ok(mut master) => {
                     retry_delay_ms = retry_min;
-                    let _ = master.run(); 
+                    let _ = master.run();
                 }
                 Err(e) => eprintln!("创建剪贴板 Master 钩子失败: {}", e),
             }
 
-            if !CONTROLLER.is_session_active(session_id) { break; }
+            if !CONTROLLER.is_session_active(session_id) {
+                break;
+            }
 
             thread::sleep(Duration::from_millis(retry_delay_ms));
             retry_delay_ms = (retry_delay_ms.saturating_mul(2)).min(retry_max);
@@ -190,10 +208,14 @@ pub async fn start_monitoring(app: AppHandle) -> Result<(), String> {
     }
 
     #[cfg(target_os = "windows")]
-    { spawn_event_driven_monitor(session_id, app); }
+    {
+        spawn_event_driven_monitor(session_id, app);
+    }
 
     #[cfg(not(target_os = "windows"))]
-    { thread::spawn(move || run_polling_loop(session_id, app)); }
+    {
+        thread::spawn(move || run_polling_loop(session_id, app));
+    }
 
     Ok(())
 }

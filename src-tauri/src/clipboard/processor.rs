@@ -1,15 +1,15 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter};
 
-use crate::clipboard::clipboard::ClipboardContext;
-use crate::db::queries::add_record; 
+use crate::clipboard::access::ClipboardContext;
+use crate::db::queries::add_record;
 use crate::models::{ClipboardRecord, ContentType};
 use crate::utils::image::{
-    encode_rgba_to_png, image_signature, normalize_image_for_storage, MAX_ENCODED_IMAGE_BYTES,
-    MAX_IMAGE_BYTES,
+    MAX_ENCODED_IMAGE_BYTES, MAX_IMAGE_BYTES, encode_rgba_to_png, image_signature,
+    normalize_image_for_storage,
 };
 
 // ==========================================
@@ -30,13 +30,21 @@ pub enum ClipboardSignature {
 
 static LAST_SIGNATURE: Mutex<ClipboardSignature> = Mutex::new(ClipboardSignature::None);
 
+fn lock_last_signature() -> std::sync::MutexGuard<'static, ClipboardSignature> {
+    LAST_SIGNATURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 // ==========================================
 // 公共检测接口
 // ==========================================
 
 pub fn identify_text_type(text: &str) -> ContentType {
     let trimmed = text.trim();
-    if trimmed.is_empty() { return ContentType::Text; }
+    if trimmed.is_empty() {
+        return ContentType::Text;
+    }
 
     let lower = trimmed.to_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("www.") {
@@ -60,15 +68,13 @@ pub fn init_startup_signature() -> Result<(), String> {
 
     if let Ok(text) = ctx.read_text() {
         let sig = compute_text_hash(&text);
-        *LAST_SIGNATURE.lock().unwrap() = ClipboardSignature::Text(sig);
+        *lock_last_signature() = ClipboardSignature::Text(sig);
         return Ok(());
     }
 
-    if ENABLE_IMAGE_RECORDING {
-        if let Ok(image) = ctx.read_image() {
-            let sig = image_signature(image.width, image.height, &image.bytes);
-            *LAST_SIGNATURE.lock().unwrap() = ClipboardSignature::Image(sig);
-        }
+    if ENABLE_IMAGE_RECORDING && let Ok(image) = ctx.read_image() {
+        let sig = image_signature(image.width, image.height, &image.bytes);
+        *lock_last_signature() = ClipboardSignature::Image(sig);
     }
     Ok(())
 }
@@ -77,18 +83,16 @@ pub fn process_clipboard_change(app: &AppHandle) -> Result<(), String> {
     let mut ctx = ClipboardContext::new().map_err(|e| format!("Clipboard Context: {:?}", e))?;
 
     // 在很多复合复制场景（如 Excel/浏览器）中，文本的价值往往高于附带的截图。
-    if let Ok(text) = ctx.read_text() {
-        if !text.trim().is_empty() {
-            try_process_text_change(text, app);
-            return Ok(());
-        }
+    if let Ok(text) = ctx.read_text()
+        && !text.trim().is_empty()
+    {
+        try_process_text_change(text, app);
+        return Ok(());
     }
 
     // 只有当剪贴板里完全没有有效文本时，才去尝试抓取纯图片（例如使用截图工具）
-    if ENABLE_IMAGE_RECORDING {
-        if let Ok(image) = ctx.read_image() {
-            try_process_image_change(image.width, image.height, image.bytes, app);
-        }
+    if ENABLE_IMAGE_RECORDING && let Ok(image) = ctx.read_image() {
+        try_process_image_change(image.width, image.height, image.bytes, app);
     }
 
     Ok(())
@@ -96,15 +100,19 @@ pub fn process_clipboard_change(app: &AppHandle) -> Result<(), String> {
 
 /// 针对图片变化的细分处理
 fn try_process_image_change(width: usize, height: usize, raw: Vec<u8>, app: &AppHandle) {
-    if raw.len() > MAX_IMAGE_BYTES { return; }
+    if raw.len() > MAX_IMAGE_BYTES {
+        return;
+    }
 
     let signature = image_signature(width, height, &raw);
 
     // 指纹查重 (极速内存操作)
     {
-        let mut last_sig = LAST_SIGNATURE.lock().unwrap();
-        if let ClipboardSignature::Image(ref last_img_sig) = *last_sig {
-            if last_img_sig == &signature { return; }
+        let mut last_sig = lock_last_signature();
+        if let ClipboardSignature::Image(ref last_img_sig) = *last_sig
+            && last_img_sig == &signature
+        {
+            return;
         }
         *last_sig = ClipboardSignature::Image(signature);
     }
@@ -112,7 +120,9 @@ fn try_process_image_change(width: usize, height: usize, raw: Vec<u8>, app: &App
     // 频率节流检查
     let now = now_ms();
     let last = LAST_IMAGE_RECORD_MS.load(Ordering::SeqCst);
-    if now.saturating_sub(last) < MIN_IMAGE_RECORD_INTERVAL_MS { return; }
+    if now.saturating_sub(last) < MIN_IMAGE_RECORD_INTERVAL_MS {
+        return;
+    }
     LAST_IMAGE_RECORD_MS.store(now, Ordering::SeqCst);
 
     let app_clone = app.clone();
@@ -127,14 +137,18 @@ fn try_process_image_change(width: usize, height: usize, raw: Vec<u8>, app: &App
 }
 
 fn try_process_text_change(text: String, app: &AppHandle) {
-    if text.trim().is_empty() { return; }
+    if text.trim().is_empty() {
+        return;
+    }
 
     let signature = compute_text_hash(&text);
 
     {
-        let mut last_sig = LAST_SIGNATURE.lock().unwrap();
-        if let ClipboardSignature::Text(last_txt_sig) = *last_sig {
-            if last_txt_sig == signature { return; }
+        let mut last_sig = lock_last_signature();
+        if let ClipboardSignature::Text(last_txt_sig) = *last_sig
+            && last_txt_sig == signature
+        {
+            return;
         }
         *last_sig = ClipboardSignature::Text(signature);
     }
@@ -161,7 +175,11 @@ pub fn build_record_from_text(text: String) -> ClipboardRecord {
     }
 }
 
-pub fn build_image_record(width: usize, height: usize, rgba: &[u8]) -> Result<ClipboardRecord, String> {
+pub fn build_image_record(
+    width: usize,
+    height: usize,
+    rgba: &[u8],
+) -> Result<ClipboardRecord, String> {
     let (normalized_width, normalized_height, normalized_rgba, scaled) =
         normalize_image_for_storage(width, height, rgba);
 
@@ -172,11 +190,17 @@ pub fn build_image_record(width: usize, height: usize, rgba: &[u8]) -> Result<Cl
     )?;
 
     if png_bytes.len() > MAX_ENCODED_IMAGE_BYTES {
-        return Err(format!("Image too large after encoding ({} bytes)", png_bytes.len()));
+        return Err(format!(
+            "Image too large after encoding ({} bytes)",
+            png_bytes.len()
+        ));
     }
 
     let description = if scaled {
-        format!("图片 {}x{} (缩放自 {}x{})", normalized_width, normalized_height, width, height)
+        format!(
+            "图片 {}x{} (缩放自 {}x{})",
+            normalized_width, normalized_height, width, height
+        )
     } else {
         format!("图片 {}x{}", width, height)
     };
@@ -205,5 +229,8 @@ fn persist_record_and_emit(app: &AppHandle, record: ClipboardRecord) -> bool {
 
 fn now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }

@@ -1,6 +1,6 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[cfg(target_os = "windows")]
 use std::sync::atomic::AtomicIsize;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Window, WindowEvent};
 
@@ -29,7 +29,6 @@ const HIDE_RECHECK_GEOMETRY_EXTRA_MS: u64 = 96;
 /// 焦点强制归还受害者后，停顿的心跳时间，防止此时我们立刻切回后台导致系统死锁或焦点全丢
 const FOCUS_RESTORE_SETTLE_MS: u64 = 20;
 
-
 // =============================================================================
 // 业务状态机 (AppState)
 // 这是一个由全局 Atomic 变量构成的免锁状态机，极其优雅地控制各种复杂的防抖状态。
@@ -53,44 +52,68 @@ static TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
 
 pub struct AppState;
 
-impl AppState {    
+impl AppState {
     fn now_ms() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
     }
 
     pub fn reset_run_state() {
         FRONTEND_READY.store(false, Ordering::SeqCst);
         PENDING_SHOW_NEAR_CURSOR.store(false, Ordering::SeqCst);
     }
-    
-    pub fn mark_main_window_shown() { LAST_MAIN_WINDOW_SHOW_MS.store(Self::now_ms(), Ordering::SeqCst); }
-    fn last_main_window_show_ms() -> u64 { LAST_MAIN_WINDOW_SHOW_MS.load(Ordering::SeqCst) }
-    
-    fn mark_geometry_event() { LAST_GEOMETRY_EVENT_MS.store(Self::now_ms(), Ordering::SeqCst); }
-    fn last_geometry_event_ms() -> u64 { LAST_GEOMETRY_EVENT_MS.load(Ordering::SeqCst) }
-    
-    fn auto_hide_is_suspended() -> bool { Self::now_ms() < AUTO_HIDE_SUSPEND_UNTIL_MS.load(Ordering::SeqCst) }
-    
+
+    pub fn mark_main_window_shown() {
+        LAST_MAIN_WINDOW_SHOW_MS.store(Self::now_ms(), Ordering::SeqCst);
+    }
+    fn last_main_window_show_ms() -> u64 {
+        LAST_MAIN_WINDOW_SHOW_MS.load(Ordering::SeqCst)
+    }
+
+    fn mark_geometry_event() {
+        LAST_GEOMETRY_EVENT_MS.store(Self::now_ms(), Ordering::SeqCst);
+    }
+    fn last_geometry_event_ms() -> u64 {
+        LAST_GEOMETRY_EVENT_MS.load(Ordering::SeqCst)
+    }
+
+    fn auto_hide_is_suspended() -> bool {
+        Self::now_ms() < AUTO_HIDE_SUSPEND_UNTIL_MS.load(Ordering::SeqCst)
+    }
+
     /// 强制开启防护罩，在指定毫秒数内主窗口绝对不因失去系统焦点而隐藏
     pub fn suspend_main_window_auto_hide(ms: u64) {
         let duration_ms = ms.clamp(200, 15_000);
-        AUTO_HIDE_SUSPEND_UNTIL_MS.store(Self::now_ms().saturating_add(duration_ms), Ordering::SeqCst);
+        AUTO_HIDE_SUSPEND_UNTIL_MS
+            .store(Self::now_ms().saturating_add(duration_ms), Ordering::SeqCst);
     }
-    
-    pub fn mark_frontend_ready() { FRONTEND_READY.store(true, Ordering::SeqCst); }
-    pub fn is_frontend_ready() -> bool { FRONTEND_READY.load(Ordering::SeqCst) }
-    
-    pub fn queue_show_near_cursor_on_ready() { PENDING_SHOW_NEAR_CURSOR.store(true, Ordering::SeqCst); }
-    pub fn take_pending_show_near_cursor() -> bool { PENDING_SHOW_NEAR_CURSOR.swap(false, Ordering::SeqCst) }
+
+    pub fn mark_frontend_ready() {
+        FRONTEND_READY.store(true, Ordering::SeqCst);
+    }
+    pub fn is_frontend_ready() -> bool {
+        FRONTEND_READY.load(Ordering::SeqCst)
+    }
+
+    pub fn queue_show_near_cursor_on_ready() {
+        PENDING_SHOW_NEAR_CURSOR.store(true, Ordering::SeqCst);
+    }
+    pub fn take_pending_show_near_cursor() -> bool {
+        PENDING_SHOW_NEAR_CURSOR.swap(false, Ordering::SeqCst)
+    }
 
     /// 截取当前处于前台的窗口（受害者）以便后续归还，必须在弹出我们的主窗口前一刻调用
     pub fn capture_target_window() {
         #[cfg(target_os = "windows")]
         TARGET_HWND.store(window_core::capture_active_window_hwnd(), Ordering::SeqCst);
     }
-    
+
     #[cfg(target_os = "windows")]
-    fn take_target_window() -> isize { TARGET_HWND.swap(0, Ordering::SeqCst) }
+    fn take_target_window() -> isize {
+        TARGET_HWND.swap(0, Ordering::SeqCst)
+    }
 }
 
 // =============================================================================
@@ -116,22 +139,26 @@ fn persist_main_window_size(window: &tauri::WebviewWindow) {
         let scale_factor = window.scale_factor().unwrap_or(1.0);
         let w = (size.width as f64 / scale_factor) as u32;
         let h = (size.height as f64 / scale_factor) as u32;
-        let _ = crate::db::queries::save_window_state(window.label(), w, h);
+        if let Err(error) = crate::db::queries::save_window_state(window.label(), w, h) {
+            eprintln!("[Window] failed to persist size: {error}");
+        }
     }
 }
 
 /// 派遣“延时刺客”做二次确认：在一段时间后复查窗口如果依旧失焦且游离，则无情隐藏它。
 fn schedule_hide_recheck(window: Window, delay_ms: u64) {
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn_blocking(move || {
         // 让当前任务交还调度器，到时间后再醒来
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-        
+
         // 醒来后如果发现当前开启了无敌防护罩，直接撤退赦免
-        if AppState::auto_hide_is_suspended() { return; }
-        
+        if AppState::auto_hide_is_suspended() {
+            return;
+        }
+
         let unfocused = window.is_focused().map(|f| !f).unwrap_or(true);
         let near = window_core::is_cursor_near_window(&window, CURSOR_NEAR_WINDOW_MARGIN_PX);
-        
+
         // 双杀条件达成：仍然没有焦点 AND 鼠标真的远离了窗口范围
         if unfocused && near == Some(false) {
             let _ = window.hide();
@@ -167,20 +194,21 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
             api.prevent_close();
             let _ = window.hide();
         }
-        
+
         // [窗口游走监控] 当窗口因为拖拽而变形移位时
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
             if window.label() == MAIN_WINDOW_LABEL {
-                let elapsed = AppState::now_ms().saturating_sub(AppState::last_main_window_show_ms());
+                let elapsed =
+                    AppState::now_ms().saturating_sub(AppState::last_main_window_show_ms());
                 // 如果距离它刚显现还很短，说明这是系统级的初始化强制排版，忽略它
                 if elapsed >= SHOW_GEOMETRY_SUPPRESS_MS {
                     AppState::mark_geometry_event();
                 }
                 // 每一次微小移动，都使用引力算法将其牢牢锁在当前工作区(屏幕)内，绝不溢出
-                window_core::clamp_window_to_work_area(window); 
+                window_core::clamp_window_to_work_area(window);
             }
         }
-        
+
         // [失焦审判] 系统收回了我们的输入焦点。此时它是最危险和最需提防的时序。
         WindowEvent::Focused(false) => {
             if window.label() != MAIN_WINDOW_LABEL || AppState::auto_hide_is_suspended() {
@@ -240,9 +268,16 @@ pub fn show_main_window_near_cursor(app: &AppHandle) -> tauri::Result<()> {
             let wv: &tauri::Webview = window.as_ref();
             let native_win = wv.window();
             let monitor = window_core::get_window_monitor(&native_win);
-            let work_area = monitor.map(|m| window_core::get_monitor_work_area_bounds(&m, WINDOW_EDGE_MARGIN_PX));
-            
-            let (x, y) = window_core::calc_near_cursor_position(cursor.x, cursor.y, size.width, size.height, work_area);
+            let work_area = monitor
+                .map(|m| window_core::get_monitor_work_area_bounds(&m, WINDOW_EDGE_MARGIN_PX));
+
+            let (x, y) = window_core::calc_near_cursor_position(
+                cursor.x,
+                cursor.y,
+                size.width,
+                size.height,
+                work_area,
+            );
             let _ = window.set_position(PhysicalPosition::new(x, y));
         }
 
@@ -264,7 +299,7 @@ pub fn hide_main_window(app: &AppHandle) -> Result<(), String> {
         {
             let target_hwnd = AppState::take_target_window();
             if target_hwnd != 0 {
-                let _ = window_core::force_restore_focus(target_hwnd); 
+                let _ = window_core::force_restore_focus(target_hwnd);
                 // 必须稍等这口气喘匀，不然后续如果在桌面端有瞬间的复制操作，系统分发队列会直接宕机
                 std::thread::sleep(std::time::Duration::from_millis(FOCUS_RESTORE_SETTLE_MS));
             }
@@ -285,11 +320,27 @@ pub fn save_size_and_exit(app: &AppHandle) {
 // 模块级自由函数：将 AppState 方法提升为自由函数，供外部直接 use / re-export
 // =============================================================================
 
-pub fn reset_run_state()                        { AppState::reset_run_state() }
-pub fn mark_main_window_shown()                 { AppState::mark_main_window_shown() }
-pub fn mark_frontend_ready()                    { AppState::mark_frontend_ready() }
-pub fn is_frontend_ready() -> bool              { AppState::is_frontend_ready() }
-pub fn queue_show_near_cursor_on_ready()        { AppState::queue_show_near_cursor_on_ready() }
-pub fn take_pending_show_near_cursor() -> bool  { AppState::take_pending_show_near_cursor() }
-pub fn suspend_main_window_auto_hide(ms: u64)   { AppState::suspend_main_window_auto_hide(ms) }
-pub fn capture_target_window()                  { AppState::capture_target_window() }
+pub fn reset_run_state() {
+    AppState::reset_run_state()
+}
+pub fn mark_main_window_shown() {
+    AppState::mark_main_window_shown()
+}
+pub fn mark_frontend_ready() {
+    AppState::mark_frontend_ready()
+}
+pub fn is_frontend_ready() -> bool {
+    AppState::is_frontend_ready()
+}
+pub fn queue_show_near_cursor_on_ready() {
+    AppState::queue_show_near_cursor_on_ready()
+}
+pub fn take_pending_show_near_cursor() -> bool {
+    AppState::take_pending_show_near_cursor()
+}
+pub fn suspend_main_window_auto_hide(ms: u64) {
+    AppState::suspend_main_window_auto_hide(ms)
+}
+pub fn capture_target_window() {
+    AppState::capture_target_window()
+}

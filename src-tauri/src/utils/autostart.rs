@@ -6,7 +6,9 @@ use tauri_plugin_autostart::ManagerExt;
 /// 依赖 `tauri_plugin_autostart` 插件，将成功或失败的错误信息转化为标准的 `String`。
 pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), String> {
     let manager = app.autolaunch();
-    let currently_enabled = manager.is_enabled().unwrap_or(false);
+    let currently_enabled = manager
+        .is_enabled()
+        .map_err(|e| format!("无法读取开机自启状态: {}", e))?;
 
     // 幂等性：状态一致直接返回
     if enabled == currently_enabled {
@@ -17,9 +19,10 @@ pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), 
         manager
             .enable()
             .map_err(|e| format!("无法启用开机自启: {}", e))?;
-    } else if let Err(e) = manager.disable() {
-        // 关闭失败通常不会导致致命级错误，仅做打印警告
-        eprintln!("[WARN] 禁用开机自启失败: {}", e);
+    } else {
+        manager
+            .disable()
+            .map_err(|e| format!("无法禁用开机自启: {}", e))?;
     }
     Ok(())
 }

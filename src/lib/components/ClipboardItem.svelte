@@ -1,5 +1,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/core";
+    import { errorMessage } from "$lib/errors";
+    import { toast } from "$lib/toast.svelte";
     import type { ClipboardRecord } from "$lib/types";
 
     interface Props {
@@ -48,6 +50,7 @@
                 await invoke("open_url", { url: record.content });
             } catch (error) {
                 console.error("Failed to open link:", error);
+                toast.error(`打开链接失败：${errorMessage(error)}`);
             }
         }
     }

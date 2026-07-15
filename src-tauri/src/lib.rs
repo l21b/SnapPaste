@@ -32,7 +32,9 @@ pub fn run() {
         ))
         // 3. 处理单实例运行
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = crate::ui::window_manager::show_main_window(app);
+            if let Err(error) = crate::ui::window_manager::show_main_window(app) {
+                eprintln!("[Window] failed to show existing instance: {error}");
+            }
         }))
         // 4. 注册快捷键路由
         .plugin(
@@ -42,7 +44,9 @@ pub fn run() {
                         let manager = app.state::<keyboard::hotkey::HotkeyManager>();
                         match manager.route(shortcut).as_deref() {
                             Some("main") => clipboard::services::handle_main_shortcut(app),
-                            Some("ai") => clipboard::services::handle_ai_shortcut(app),
+                            Some("ai") if ai::FEATURE_ENABLED => {
+                                clipboard::services::handle_ai_shortcut(app)
+                            }
                             _ => {}
                         }
                     }
@@ -72,8 +76,6 @@ pub fn run() {
             commands::set_frontend_ready,
             commands::start_window_drag,
             commands::open_url,
-            commands::paste_ai_result,
-            commands::process_ai_text,
             commands::paste_record_content,
         ])
         // 5. 应用生命周期：初始化
@@ -81,37 +83,41 @@ pub fn run() {
             let handle = app.handle();
 
             // 1. 注入 AI 客户端
-            let client =
-                crate::ai::ai::create_ai_client().map_err(Box::<dyn std::error::Error>::from)?;
+            let client = crate::ai::client::create_ai_client()
+                .map_err(Box::<dyn std::error::Error>::from)?;
             app.manage(client);
 
             // 2. 初始化底层数据
-            let _ = db::init_database();
+            db::init_database()?;
 
             // 3. 主窗口
             crate::ui::window_manager::configure_main_window(handle);
 
             // 4. 初始化各项桌面端系统服务
-            let _ = ui::tray::create_tray(handle);
-            let _ = utils::autostart::sync_from_settings(handle);
+            ui::tray::create_tray(handle)?;
+            if let Err(error) = utils::autostart::sync_from_settings(handle) {
+                eprintln!("[Autostart] startup sync failed: {error}");
+            }
 
             // 5. 注册底层快捷键
             let manager = app.state::<keyboard::hotkey::HotkeyManager>();
-            if let Ok(settings) = db::queries::get_settings() {
-                if let Err(e) = manager.register(handle, "main", &settings.hotkey) {
-                    eprintln!("[Hotkey] failed to register main hotkey on startup: {}", e);
-                }
-                if settings.ai_enabled {
-                    if let Err(e) = manager.register(handle, "ai", &settings.ai_hotkey) {
-                        eprintln!("[Hotkey] failed to register AI hotkey on startup: {}", e);
-                    }
-                }
+            let settings = db::queries::get_settings()?;
+            if let Err(e) = manager.register(handle, "main", &settings.hotkey) {
+                eprintln!("[Hotkey] failed to register main hotkey on startup: {}", e);
+            }
+            if ai::FEATURE_ENABLED
+                && settings.ai_enabled
+                && let Err(e) = manager.register(handle, "ai", &settings.ai_hotkey)
+            {
+                eprintln!("[Hotkey] failed to register AI hotkey on startup: {}", e);
             }
 
             // 6. 开启后台守护线程
             let monitor_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = clipboard::monitor::start_monitoring(monitor_handle).await;
+                if let Err(error) = clipboard::monitor::start_monitoring(monitor_handle).await {
+                    eprintln!("[Clipboard] monitor failed to start: {error}");
+                }
             });
 
             Ok(())

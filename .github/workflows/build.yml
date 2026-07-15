@@ -1,10 +1,12 @@
 name: SnapPaste CI/CD
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     tags:
-      - '[0-9]*' 
+      - '[0-9]*'
+      - 'v[0-9]*'
   pull_request:
     branches: [main]
 
@@ -23,8 +25,19 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - name: Install dependencies and type check
-        run: npm ci && npm run check
+      - name: Install dependencies
+        run: npm ci
+      - name: Check version consistency
+        run: npm run check:version
+      - name: Check release tag matches version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm run check:version -- --tag "${{ github.ref_name }}"
+      - name: Run frontend tests
+        run: npm test
+      - name: Type check frontend
+        run: npm run check
+      - name: Build frontend
+        run: npm run build
 
   rust-check:
     runs-on: ubuntu-latest
@@ -38,11 +51,15 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-      - name: Check formatting and linting
-        run: |
-          cd src-tauri
-          cargo fmt --check
-          cargo clippy -- -D warnings
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test
+      - name: Lint all Rust targets
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
 
   build-and-release:
     needs: [frontend-check, rust-check]

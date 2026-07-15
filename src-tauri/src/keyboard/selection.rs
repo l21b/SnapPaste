@@ -1,11 +1,11 @@
 use crate::clipboard;
-use crate::keyboard::keyboard;
+use crate::keyboard::input;
 use std::error::Error;
 use std::time::Duration;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
 
 #[cfg(target_os = "windows")]
@@ -76,15 +76,12 @@ fn get_text_by_clipboard() -> Result<String, Box<dyn Error>> {
         clipboard::ClipboardContext::new().map_err(|e| format!("无法初始化剪贴板: {}", e))?;
 
     // 1. 备份现有剪贴板内容
-    let old_text = match ctx.read_text() {
-        Ok(text) => Some(text),
-        Err(_) => None, // 如果原来没文本，就记录为 None
-    };
+    let old_text = ctx.read_text().ok();
 
     let num_before = unsafe { GetClipboardSequenceNumber() };
 
     // 2. 调用键盘基础设施模拟复制
-    keyboard::simulate_copy(0).map_err(|e| format!("模拟复制失败: {}", e))?;
+    input::simulate_copy(0).map_err(|e| format!("模拟复制失败: {}", e))?;
 
     // 3. 轮询等待剪贴板变化
     let start = std::time::Instant::now();
@@ -123,16 +120,16 @@ fn get_text_by_clipboard() -> Result<String, Box<dyn Error>> {
 /// 获取当前选中的文本（Windows 专用），优先使用 UI 自动化 API，回退到剪贴板方式。
 #[cfg(target_os = "windows")]
 pub fn get_selected_text() -> String {
-    if let Ok(text) = get_text_by_automation() {
-        if !text.is_empty() {
-            return text;
-        }
+    if let Ok(text) = get_text_by_automation()
+        && !text.is_empty()
+    {
+        return text;
     }
 
-    if let Ok(text) = get_text_by_clipboard() {
-        if !text.is_empty() {
-            return text;
-        }
+    if let Ok(text) = get_text_by_clipboard()
+        && !text.is_empty()
+    {
+        return text;
     }
 
     String::new()

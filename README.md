@@ -11,7 +11,7 @@ A lightweight clipboard history tool built with Rust + Tauri + Svelte, quick acc
 
 ## Features
 
-- Global hotkey support (default `Ctrl+Shift+V`)
+- Global hotkey support (default `Alt+Z`)
 - Dual-view: History & Favorites, with search support
 - Pin, favorite, delete, and clear records
 - Favorites import/export (JSON)

@@ -1,3 +1,3 @@
 pub mod hotkey;
-pub mod keyboard;
+pub mod input;
 pub mod selection;

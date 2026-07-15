@@ -39,8 +39,8 @@ impl Default for Settings {
             auto_start: false,
 
             // ========== AI ==========
-            ai_enabled: true,
-            ai_hotkey: "Alt+X".to_string(),
+            ai_enabled: false,
+            ai_hotkey: "Ctrl+Shift+A".to_string(),
             ai_api_url: "".to_string(),
             ai_api_key: "".to_string(),
             ai_model: "".to_string(),

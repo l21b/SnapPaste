@@ -1,4 +1,3 @@
-use tauri::AppHandle;
 use super::CmdResult;
 use crate::clipboard::services::paste_record_logic;
 use crate::db::{
@@ -7,6 +6,7 @@ use crate::db::{
     search_favorites, search_history, toggle_favorite, toggle_pinned,
 };
 use crate::models::{ClipboardRecord, FavoriteExportResult};
+use tauri::AppHandle;
 
 /// 获取剪贴板历史记录
 #[tauri::command]
@@ -76,7 +76,10 @@ pub fn export_favorites_to_path(path: String) -> CmdResult<FavoriteExportResult>
 
 /// 从文件导入收藏和设置
 #[tauri::command]
-pub async fn import_favorites_from_path(app: tauri::AppHandle, path: String) -> CmdResult<(i32, bool)> {
+pub async fn import_favorites_from_path(
+    app: tauri::AppHandle,
+    path: String,
+) -> CmdResult<(i32, bool)> {
     import_favorites_from_path_logic(app, path).await
 }
 

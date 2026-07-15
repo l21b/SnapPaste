@@ -1,4 +1,4 @@
-use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageFormat};
+use image::{ColorType, ImageEncoder, ImageFormat, codecs::png::PngEncoder};
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
