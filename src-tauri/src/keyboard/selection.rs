@@ -1,6 +1,10 @@
-use crate::clipboard;
+#[cfg(target_os = "windows")]
+use crate::clipboard::access::ClipboardContext;
+#[cfg(target_os = "windows")]
 use crate::keyboard::input;
+#[cfg(target_os = "windows")]
 use std::error::Error;
+#[cfg(target_os = "windows")]
 use std::time::Duration;
 
 #[cfg(target_os = "windows")]
@@ -72,8 +76,7 @@ fn get_text_by_automation() -> Result<String, Box<dyn Error>> {
 #[cfg(target_os = "windows")]
 fn get_text_by_clipboard() -> Result<String, Box<dyn Error>> {
     // 使用单一 Context 避免频繁创建回收连接
-    let mut ctx =
-        clipboard::ClipboardContext::new().map_err(|e| format!("无法初始化剪贴板: {}", e))?;
+    let mut ctx = ClipboardContext::new().map_err(|e| format!("无法初始化剪贴板: {}", e))?;
 
     // 1. 备份现有剪贴板内容
     let old_text = ctx.read_text().ok();

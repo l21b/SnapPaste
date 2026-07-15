@@ -61,7 +61,8 @@ pub fn simulate_paste(delay_ms: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// 模拟按下系统复制快捷键 (Windows/Linux: Ctrl+C, macOS: Cmd+C)
+/// 模拟按下 Windows 复制快捷键 Ctrl+C
+#[cfg(target_os = "windows")]
 pub fn simulate_copy(delay_ms: u64) -> Result<(), String> {
     if delay_ms > 0 {
         thread::sleep(Duration::from_millis(delay_ms));
@@ -70,23 +71,11 @@ pub fn simulate_copy(delay_ms: u64) -> Result<(), String> {
     let mut enigo = create_enigo()?;
     clear_modifiers()?;
 
-    #[cfg(target_os = "macos")]
-    {
-        let _ = enigo.key(Key::Meta, Direction::Press);
-        thread::sleep(Duration::from_millis(KEY_STEP_MS));
-        let _ = enigo.key(Key::Unicode('c'), Direction::Click);
-        thread::sleep(Duration::from_millis(KEY_STEP_MS));
-        let _ = enigo.key(Key::Meta, Direction::Release);
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = enigo.key(Key::Control, Direction::Press);
-        thread::sleep(Duration::from_millis(KEY_STEP_MS));
-        let _ = enigo.key(Key::Unicode('c'), Direction::Click);
-        thread::sleep(Duration::from_millis(KEY_STEP_MS));
-        let _ = enigo.key(Key::Control, Direction::Release);
-    }
+    let _ = enigo.key(Key::Control, Direction::Press);
+    thread::sleep(Duration::from_millis(KEY_STEP_MS));
+    let _ = enigo.key(Key::Unicode('c'), Direction::Click);
+    thread::sleep(Duration::from_millis(KEY_STEP_MS));
+    let _ = enigo.key(Key::Control, Direction::Release);
 
     Ok(())
 }

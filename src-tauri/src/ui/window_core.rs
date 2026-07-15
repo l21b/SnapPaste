@@ -19,12 +19,6 @@ pub fn capture_active_window_hwnd() -> isize {
     unsafe { GetForegroundWindow() as isize }
 }
 
-/// 非 Windows 平台占位实现
-#[cfg(not(target_os = "windows"))]
-pub fn capture_active_window_hwnd() -> isize {
-    0
-}
-
 /// 强行将系统焦点归还给指定的窗口句柄 (HWND)
 #[cfg(target_os = "windows")]
 pub fn force_restore_focus(hwnd: isize) -> bool {

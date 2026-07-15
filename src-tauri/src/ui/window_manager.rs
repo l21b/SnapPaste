@@ -27,6 +27,7 @@ const HIDE_RECHECK_LONG_MS: u64 = 240;
 /// 因变形引起的补偿性延迟，配合 GEOMETRY_FOCUS_GUARD_MS 使用
 const HIDE_RECHECK_GEOMETRY_EXTRA_MS: u64 = 96;
 /// 焦点强制归还受害者后，停顿的心跳时间，防止此时我们立刻切回后台导致系统死锁或焦点全丢
+#[cfg(target_os = "windows")]
 const FOCUS_RESTORE_SETTLE_MS: u64 = 20;
 
 // =============================================================================

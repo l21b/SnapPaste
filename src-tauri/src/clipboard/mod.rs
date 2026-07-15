@@ -7,6 +7,3 @@ pub mod access;
 pub mod monitor;
 pub mod processor;
 pub mod services;
-
-// Re-export 常用函数，供上层直接调用
-pub use access::*;
