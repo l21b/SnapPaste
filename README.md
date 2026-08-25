@@ -1,6 +1,6 @@
 # SnapPaste
 
-A lightweight clipboard history tool built with Rust + Tauri + Svelte, quick access, fast search, and instant paste.
+A lightweight clipboard history tool built with Rust + Slint, quick access, fast search, and instant paste.
 
 
 <p align="left">
@@ -25,8 +25,7 @@ A lightweight clipboard history tool built with Rust + Tauri + Svelte, quick acc
 ## Tech Stack
 
 - Rust
-- Tauri 2.x
-- Svelte 5
+- Slint
 - SQLite (rusqlite)
 - arboard
 - enigo

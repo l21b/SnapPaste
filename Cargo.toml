@@ -1,0 +1,61 @@
+[package]
+name = "SnapPaste"
+version = "1.6.0"
+description = "Easy Clipboard"
+authors = ["21b"]
+edition = "2024"
+autobins = false
+
+[lib]
+name = "snappaste_lib"
+
+[[bin]]
+name = "SnapPaste"
+path = "src/bin/snappaste_slint.rs"
+
+[build-dependencies]
+slint-build = "1.17.1"
+winresource = "0.1"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+chrono = { version = "0.4", features = ["serde"] }
+arboard = "3.4"
+enigo = "0.6.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_Shell",
+] }
+clipboard-master = "4"
+slint = { version = "1.17.1", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-software",
+    "system-tray",
+    "raw-window-handle-06",
+    "compat-1-2",
+] }
+global-hotkey = "0.7"
+raw-window-handle = "0.6"
+rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "async-std"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+strip = true
+panic = "abort"

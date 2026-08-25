@@ -1,9 +1,0 @@
-//! clipboard 模块 - 剪贴板相关功能
-//! - access.rs:    底层读写操作
-//! - monitor.rs:   剪贴板变化监听守护线程
-//! - services.rs:  业务逻辑（快捷键处理、AI 处理、设置保存）
-
-pub mod access;
-pub mod monitor;
-pub mod processor;
-pub mod services;
