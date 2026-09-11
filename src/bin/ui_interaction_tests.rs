@@ -4,17 +4,31 @@ use slint::platform::{Platform, PlatformError, WindowAdapter, WindowEvent};
 use slint::{LogicalPosition, Model, PhysicalSize};
 use std::cell::Cell;
 
-struct TestPlatform(Rc<MinimalSoftwareWindow>);
+struct TestPlatform {
+    window: Rc<MinimalSoftwareWindow>,
+    started_at: std::time::Instant,
+    time_offset: Rc<Cell<Duration>>,
+}
 impl Platform for TestPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-        Ok(self.0.clone())
+        Ok(self.window.clone())
+    }
+
+    fn duration_since_start(&self) -> Duration {
+        self.started_at.elapsed() + self.time_offset.get()
     }
 }
 
 #[test]
 fn visible_controls_receive_pointer_events() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();
+    let time_offset = Rc::new(Cell::new(Duration::ZERO));
+    slint::platform::set_platform(Box::new(TestPlatform {
+        window: window.clone(),
+        started_at: std::time::Instant::now(),
+        time_offset: time_offset.clone(),
+    }))
+    .unwrap();
     let ui = MainWindow::new().unwrap();
     window.set_size(PhysicalSize::new(264, 421));
     ui.show().unwrap();
@@ -314,6 +328,37 @@ fn visible_controls_receive_pointer_events() {
             .dispatch_event(WindowEvent::KeyReleased { text: "x".into() });
         assert_eq!(ui.get_search_text(), "x", "typing immediately after reset");
     }
+
+    // Toasts expire without clicks, and newer messages get their own full duration.
+    let advance_time = |duration| {
+        time_offset.set(time_offset.get() + duration);
+        slint::platform::update_timers_and_animations();
+        render();
+    };
+    ui.set_status_text("已清除 8 条记录".into());
+    advance_time(Duration::ZERO);
+    advance_time(Duration::from_millis(2000));
+    assert_eq!(ui.get_status_text(), "已清除 8 条记录");
+    ui.set_status_text("收藏已添加".into());
+    advance_time(Duration::ZERO);
+    advance_time(Duration::from_millis(1500));
+    assert_eq!(
+        ui.get_status_text(),
+        "收藏已添加",
+        "old deadline must not clear new toast"
+    );
+    advance_time(Duration::from_millis(1600));
+    assert!(
+        ui.get_status_text().is_empty(),
+        "toast expires without another click"
+    );
+    ui.set_status_text("已清除 8 条记录".into());
+    advance_time(Duration::ZERO);
+    advance_time(Duration::from_millis(3100));
+    assert!(
+        ui.get_status_text().is_empty(),
+        "timer restarts after an earlier expiry"
+    );
 
     // Focus loss hides immediately, including directly after show: no timer tick
     // or startup grace period is needed. Focus gain never hides the popup.

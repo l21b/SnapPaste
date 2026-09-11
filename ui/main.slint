@@ -551,7 +551,23 @@ export component MainWindow inherits Window {
     in property <bool> focus-preserving: false;
     in-out property <string> active-panel: "main";
     in-out property <string> search-text;
-    in property <string> status-text: "";
+    in-out property <string> status-text: "";
+    changed status-text => {
+        if root.status-text != "" {
+            status-timeout.start();
+            status-timeout.restart();
+        } else {
+            status-timeout.stop();
+        }
+    }
+    status-timeout := Timer {
+        interval: 3s;
+        running: false;
+        triggered => {
+            self.stop();
+            root.status-text = "";
+        }
+    }
     in property <string> app-version: "1.6.1";
 
     in-out property <string> settings-hotkey: "Alt+Z";
