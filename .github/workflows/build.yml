@@ -117,9 +117,9 @@ jobs:
         run: |
           $version = (Select-String -Path 'Cargo.toml' -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
           $releaseDir = 'target/release'
-          $portable = "$releaseDir/SnapPaste-$version-windows-x64-portable.zip"
+          $portable = "$releaseDir/SnapPaste-windows-64-portable.zip"
           $installer = "$releaseDir/SnapPaste-$version-setup.exe"
-          $checksums = "$releaseDir/SHA256SUMS.txt"
+          $setupArchive = "$releaseDir/SnapPaste-windows-64-setup.zip"
           $makeNsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
 
           $installerScript = (Resolve-Path 'packaging\windows\SnapPaste.nsi').Path
@@ -133,19 +133,20 @@ jobs:
           }
 
           Compress-Archive -Path "$releaseDir/SnapPaste.exe" -DestinationPath $portable -Force
-          Get-FileHash $portable, $installer -Algorithm SHA256 |
-            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLowerInvariant(), (Split-Path $_.Path -Leaf) } |
-            Set-Content -Path $checksums -Encoding ascii
+          Compress-Archive -Path $installer -DestinationPath $setupArchive -Force
+          $notesPath = "docs/releases/$version.md"
+          if (!(Test-Path -LiteralPath $notesPath)) { throw "Missing release notes: $notesPath" }
+          Copy-Item -LiteralPath $notesPath -Destination "$releaseDir/release-notes.md"
 
       - name: Create draft GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/release/SnapPaste-*-windows-x64-portable.zip
-            target/release/SnapPaste-*-setup.exe
-            target/release/SHA256SUMS.txt
+            target/release/SnapPaste-windows-64-portable.zip
+            target/release/SnapPaste-windows-64-setup.zip
           tag_name: ${{ inputs.release_tag || github.ref_name }}
-          name: SnapPaste ${{ inputs.release_tag || github.ref_name }}
+          name: ${{ inputs.release_tag || github.ref_name }}
+          body_path: target/release/release-notes.md
           draft: true
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
