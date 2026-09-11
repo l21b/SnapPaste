@@ -10,7 +10,7 @@ fn main() {
         resource
             .set_icon("icons/icon.ico")
             .set("ProductName", "SnapPaste")
-            .set("FileDescription", "SnapPaste Clipboard Manager")
+            .set("FileDescription", "SnapPaste")
             .set("CompanyName", "21b")
             .set("LegalCopyright", "Copyright © 21b");
         resource

@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 #[cfg(target_os = "windows")]
@@ -36,22 +36,13 @@ const THUMBNAIL_WIDTH: usize = 120;
 const THUMBNAIL_HEIGHT: usize = 82;
 const PROJECT_URL: &str = "https://github.com/l21b/SnapPaste";
 
+#[derive(Default)]
 struct ViewState {
     keyword: String,
     favorites_only: bool,
     preserve_target_focus: bool,
-    shown_at: Instant,
-}
-
-impl Default for ViewState {
-    fn default() -> Self {
-        Self {
-            keyword: String::new(),
-            favorites_only: false,
-            preserve_target_focus: false,
-            shown_at: Instant::now(),
-        }
-    }
+    #[cfg(target_os = "windows")]
+    paste_target: Option<isize>,
 }
 
 struct HotkeyRuntime {
@@ -119,8 +110,8 @@ fn content_type_label(content_type: &ContentType) -> &'static str {
 }
 
 fn display_content(record: &ClipboardRecord) -> String {
-    let mut text = record.content.replace(['\r', '\n'], " ");
-    const MAX_CHARS: usize = 180;
+    let mut text = record.content.clone();
+    const MAX_CHARS: usize = 100;
     if text.chars().count() > MAX_CHARS {
         text = text.chars().take(MAX_CHARS).collect::<String>() + "…";
     }
@@ -240,6 +231,21 @@ fn copy_record_to_clipboard(id: i64) -> Result<(), String> {
     }
 }
 
+/// Restore input state and request a frame. The Windows software backend presents
+/// full frames, including subsequent redraws after native window movement.
+fn show_window(ui: &MainWindow) -> Result<(), slint::PlatformError> {
+    ui.show()?;
+    cancel_pointer_capture(ui.window());
+    ui.window().request_redraw();
+    Ok(())
+}
+
+/// Cancel a press without synthesizing a click. Native move loops consume the
+/// mouse release, so Slint must not retain the title-bar TouchArea's grab.
+fn cancel_pointer_capture(window: &slint::Window) {
+    window.dispatch_event(slint::platform::WindowEvent::PointerExited);
+}
+
 fn paste_into_preserved_target(ui: &MainWindow) -> Result<(), String> {
     ui.hide().map_err(|error| error.to_string())?;
     snappaste_lib::clipboard::monitor::with_paste_in_progress(|| {
@@ -267,6 +273,12 @@ fn apply_theme(ui: &MainWindow, theme: &Theme) {
 fn load_settings_into_ui(ui: &MainWindow) -> Result<Settings, String> {
     let settings = snappaste_lib::db::get_settings().map_err(|error| error.to_string())?;
     ui.set_settings_hotkey(settings.hotkey.clone().into());
+    let (modifier, key) = settings
+        .hotkey
+        .rsplit_once('+')
+        .unwrap_or(("", &settings.hotkey));
+    ui.set_settings_modifier(modifier.into());
+    ui.set_settings_key(key.into());
     ui.set_settings_theme(theme_token(&settings.theme).into());
     ui.set_settings_keep_days(settings.keep_days.to_string().into());
     ui.set_settings_max_records(settings.max_records.to_string().into());
@@ -350,12 +362,45 @@ fn bind_callbacks(
     hotkeys: Rc<RefCell<HotkeyRuntime>>,
 ) {
     let weak = ui.as_weak();
-    ui.on_window_drag_requested(move || {
-        if let Some(ui) = weak.upgrade()
-            && let Err(error) = start_window_drag(&ui)
-        {
-            eprintln!("[Window] failed to begin drag: {error}");
+    let interaction_state = state.clone();
+    ui.on_interaction_requested(move || {
+        let Some(ui) = weak.upgrade() else {
+            return;
+        };
+        if !ui.get_focus_preserving() {
+            return;
         }
+        #[cfg(target_os = "windows")]
+        {
+            if let Err(error) = configure_no_activate(&ui, false) {
+                ui.set_status_text(format!("窗口模式恢复失败：{error}").into());
+                return;
+            }
+            if let Ok(hwnd) = main_window_hwnd(&ui) {
+                unsafe {
+                    SetForegroundWindow(hwnd);
+                }
+            }
+        }
+        let mut state = lock_view_state(&interaction_state);
+        state.preserve_target_focus = false;
+        ui.set_focus_preserving(false);
+    });
+
+    let weak = ui.as_weak();
+    ui.on_window_drag_requested(move || {
+        // Let Slint finish installing the grab for this press before cancelling it.
+        // Entering the Windows move loop inside pointer-event is re-entrant.
+        let weak = weak.clone();
+        Timer::single_shot(Duration::ZERO, move || {
+            if let Some(ui) = weak.upgrade() {
+                cancel_pointer_capture(ui.window());
+                if let Err(error) = start_window_drag(&ui) {
+                    eprintln!("[Window] failed to begin drag: {error}");
+                }
+                cancel_pointer_capture(ui.window());
+            }
+        });
     });
 
     let weak = ui.as_weak();
@@ -390,10 +435,34 @@ fn bind_callbacks(
             Ok(()) if preserve_target_focus => {
                 if let Err(error) = paste_into_preserved_target(&ui) {
                     ui.set_status_text(format!("自动粘贴失败：{error}；内容已保留在剪贴板").into());
-                    let _ = ui.show();
+                    let _ = show_window(&ui);
                 }
             }
-            Ok(()) => ui.set_status_text("已复制到剪贴板".into()),
+            Ok(()) => {
+                #[cfg(target_os = "windows")]
+                let paste_target = lock_view_state(&activate_state).paste_target;
+                #[cfg(target_os = "windows")]
+                if let Some(target) = paste_target {
+                    let result = (|| -> Result<(), String> {
+                        ui.hide().map_err(|error| error.to_string())?;
+                        let hwnd = target as HWND;
+                        // Search takes focus; restore the original target before sending any keys.
+                        unsafe {
+                            SetForegroundWindow(hwnd);
+                            if GetForegroundWindow() != hwnd {
+                                return Err("无法恢复原窗口焦点，内容已复制，请手动粘贴".into());
+                            }
+                        }
+                        paste_into_preserved_target(&ui)
+                    })();
+                    if let Err(error) = result {
+                        ui.set_status_text(error.into());
+                        let _ = show_window(&ui);
+                    }
+                    return;
+                }
+                ui.set_status_text("已复制到剪贴板".into());
+            }
             Err(error) => ui.set_status_text(format!("复制失败：{error}").into()),
         }
     });
@@ -518,7 +587,7 @@ fn bind_callbacks(
                 apply_theme(&ui, &updated.theme);
                 ui.set_active_panel("main".into());
                 refresh_records(&ui.as_weak(), &save_state);
-                ui.set_status_text("设置已保存并立即生效".into());
+                ui.set_status_text("".into());
             }
             Err(error) => ui.set_status_text(format!("保存设置失败：{error}").into()),
         }
@@ -683,6 +752,9 @@ fn configure_no_activate(ui: &MainWindow, enabled: bool) -> Result<(), String> {
         } else {
             current_style & !popup_flags | WS_EX_TOOLWINDOW as isize
         };
+        if next_style == current_style {
+            return Ok(());
+        }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next_style);
 
         let insert_after = if enabled {
@@ -769,22 +841,35 @@ fn position_near_cursor(ui: &MainWindow) -> Result<(), String> {
     Ok(())
 }
 
+// Use the normal search callback so the query state and visible model reset together.
+// Skip it for an already-empty search to keep ordinary reopening inexpensive.
+fn reset_search_for_reopen(ui: &MainWindow) {
+    if !ui.get_search_text().is_empty() {
+        ui.set_search_text("".into());
+        ui.invoke_search_changed("".into());
+    }
+}
+
 fn show_main_window(ui: &MainWindow, state: &Arc<Mutex<ViewState>>) {
     {
         let mut state = lock_view_state(state);
         state.preserve_target_focus = false;
-        state.shown_at = Instant::now();
+        #[cfg(target_os = "windows")]
+        {
+            state.paste_target = None;
+        }
     }
     ui.set_focus_preserving(false);
     ui.set_active_panel("main".into());
+    reset_search_for_reopen(ui);
+    // Reuse the current model when there was no search to clear.
+    if let Err(error) = show_window(ui) {
+        ui.set_status_text(format!("窗口显示失败：{error}").into());
+        return;
+    }
     #[cfg(target_os = "windows")]
     if let Err(error) = configure_no_activate(ui, false) {
         ui.set_status_text(format!("窗口模式恢复失败：{error}").into());
-    }
-    refresh_records(&ui.as_weak(), state);
-    if let Err(error) = ui.show() {
-        ui.set_status_text(format!("窗口显示失败：{error}").into());
-        return;
     }
     #[cfg(target_os = "windows")]
     if let Ok(hwnd) = main_window_hwnd(ui) {
@@ -792,44 +877,47 @@ fn show_main_window(ui: &MainWindow, state: &Arc<Mutex<ViewState>>) {
             let _ = SetForegroundWindow(hwnd);
         }
     }
+    ui.invoke_focus_search();
 }
 
 fn show_main_window_from_hotkey(ui: &MainWindow, state: &Arc<Mutex<ViewState>>) {
     {
         let mut state = lock_view_state(state);
-        state.preserve_target_focus = true;
-        state.shown_at = Instant::now();
-    }
-    ui.set_focus_preserving(true);
-    ui.set_active_panel("main".into());
-    refresh_records(&ui.as_weak(), state);
-
-    #[cfg(target_os = "windows")]
-    let no_activate_ready = match configure_no_activate(ui, true) {
-        Ok(()) => true,
-        Err(error) => {
-            lock_view_state(state).preserve_target_focus = false;
-            ui.set_focus_preserving(false);
-            ui.set_status_text(format!("无焦点窗口模式失败：{error}").into());
-            false
+        // Capture the destination before activating our own window. A no-activate
+        // popup leaves the first click doing activation work instead of editing.
+        state.preserve_target_focus = false;
+        #[cfg(target_os = "windows")]
+        {
+            state.paste_target =
+                Some(unsafe { GetForegroundWindow() } as isize).filter(|hwnd| *hwnd != 0);
         }
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        lock_view_state(state).preserve_target_focus = false;
-        ui.set_focus_preserving(false);
     }
+    ui.set_focus_preserving(false);
+    ui.set_active_panel("main".into());
+    reset_search_for_reopen(ui);
+    // Reuse the current model when there was no search to clear.
 
-    if let Err(error) = ui.show() {
+    if let Err(error) = show_window(ui) {
         ui.set_status_text(format!("窗口显示失败：{error}").into());
         return;
     }
-
     #[cfg(target_os = "windows")]
-    if no_activate_ready && let Err(error) = position_near_cursor(ui) {
+    if let Err(error) = configure_no_activate(ui, false) {
+        ui.set_status_text(format!("窗口模式恢复失败：{error}").into());
+    }
+    #[cfg(target_os = "windows")]
+    if let Err(error) = position_near_cursor(ui) {
         ui.set_status_text(format!("窗口定位失败：{error}").into());
     }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(hwnd) = main_window_hwnd(ui) {
+            unsafe {
+                SetForegroundWindow(hwnd);
+            }
+        }
+    }
+    ui.invoke_focus_search();
 }
 
 fn bind_tray(tray: &AppTray, ui: &MainWindow, state: Arc<Mutex<ViewState>>) {
@@ -838,14 +926,6 @@ fn bind_tray(tray: &AppTray, ui: &MainWindow, state: Arc<Mutex<ViewState>>) {
     tray.on_tray_clicked(move || {
         if let Some(ui) = weak.upgrade() {
             show_main_window(&ui, &click_state);
-        }
-    });
-
-    let weak = ui.as_weak();
-    let open_state = state.clone();
-    tray.on_open_requested(move || {
-        if let Some(ui) = weak.upgrade() {
-            show_main_window(&ui, &open_state);
         }
     });
 
@@ -920,40 +1000,141 @@ fn start_single_instance_timer(
     timer
 }
 
-fn start_auto_hide_timer(ui: &MainWindow, state: Arc<Mutex<ViewState>>) -> Timer {
-    let timer = Timer::default();
-    let weak = ui.as_weak();
-    timer.start(TimerMode::Repeated, Duration::from_millis(150), move || {
-        let Some(ui) = weak.upgrade() else {
-            return;
-        };
-        if !ui.window().is_visible() {
+fn handle_window_focus(ui: &MainWindow, focused: bool) {
+    if focused || !ui.window().is_visible() {
+        return;
+    }
+    // These panels own file pickers/dropdowns or links and intentionally stay open.
+    if matches!(ui.get_active_panel().as_str(), "settings" | "about") {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(hwnd) = main_window_hwnd(ui) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOTOWNER, GetAncestor};
+        let foreground = unsafe { GetForegroundWindow() };
+        // Ignore stale loss events from a rapid hide/show, and focus transferred
+        // to one of our own native popups rather than an external application.
+        if foreground == hwnd
+            || (!foreground.is_null() && unsafe { GetAncestor(foreground, GA_ROOTOWNER) } == hwnd)
+        {
             return;
         }
-        let panel = ui.get_active_panel();
-        if panel.as_str() == "settings" || panel.as_str() == "about" {
-            return;
-        }
-        let state = lock_view_state(&state);
-        if state.preserve_target_focus || state.shown_at.elapsed() < Duration::from_millis(500) {
-            return;
-        }
+    }
+    cancel_pointer_capture(ui.window());
+    if let Err(error) = ui.hide() {
+        ui.set_status_text(format!("窗口隐藏失败：{error}").into());
+    }
+}
 
-        #[cfg(target_os = "windows")]
-        if let Ok(hwnd) = main_window_hwnd(&ui) {
-            let foreground = unsafe { GetForegroundWindow() };
-            if !foreground.is_null() && foreground != hwnd {
-                drop(state);
-                if let Err(error) = ui.hide() {
-                    ui.set_status_text(format!("窗口隐藏失败：{error}").into());
-                }
-            }
+fn install_auto_hide(ui: &MainWindow) {
+    use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
+    let weak = ui.as_weak();
+    ui.window().on_winit_window_event(move |_, event| {
+        if let winit::event::WindowEvent::Focused(focused) = event
+            && let Some(ui) = weak.upgrade()
+        {
+            handle_window_focus(&ui, *focused);
+        }
+        EventResult::Propagate
+    });
+}
+
+/// Preview fixtures never read or change the user's clipboard history or settings.
+fn preview_ui(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let ui = MainWindow::new()?;
+    ui.global::<UiPalette>()
+        .set_dark_mode(arguments.iter().any(|arg| arg == "--dark"));
+    if arguments.iter().any(|arg| arg == "--settings") {
+        ui.set_active_panel("settings".into());
+        // Exercise the longest modifier label in visual previews.
+        ui.set_settings_modifier("Ctrl+Alt+Shift".into());
+    } else if arguments.iter().any(|arg| arg == "--about") {
+        ui.set_active_panel("about".into());
+    }
+    let records = vec![
+        ClipboardItemData {
+            id: "1".into(),
+            content: "Tauri".into(),
+            type_label: "文本".into(),
+            pinned: true,
+            ..Default::default()
+        },
+        ClipboardItemData {
+            id: "2".into(),
+            content: "Rust + Slint：长文本应该随内容自动换行，并完整展示多行预览。".into(),
+            type_label: "文本".into(),
+            ..Default::default()
+        },
+        ClipboardItemData {
+            id: "3".into(),
+            content: "第一行\n第二行\n第三行".into(),
+            type_label: "文本".into(),
+            ..Default::default()
+        },
+        ClipboardItemData {
+            id: "4".into(),
+            content: "https://github.com/l21b/SnapPaste".into(),
+            type_label: "链接".into(),
+            favorite: true,
+            ..Default::default()
+        },
+    ];
+    ui.set_records(ModelRc::new(VecModel::from(records)));
+    let weak = ui.as_weak();
+    ui.on_favorites_toggled(move || {
+        if let Some(ui) = weak.upgrade() {
+            ui.set_favorites_only(!ui.get_favorites_only());
         }
     });
-    timer
+    let weak = ui.as_weak();
+    ui.on_escape_requested(move || {
+        if let Some(ui) = weak.upgrade() {
+            let _ = ui.hide();
+        }
+    });
+    if let Some(index) = arguments.iter().position(|arg| arg == "--snapshot") {
+        let path = arguments
+            .get(index + 1)
+            .ok_or("--snapshot requires a PNG path")?
+            .clone();
+        let snapshot_error = Rc::new(RefCell::new(None));
+        let result = snapshot_error.clone();
+        let weak = ui.as_weak();
+        // Let layout and native-widget theme notifications settle before capturing.
+        Timer::single_shot(Duration::from_millis(100), move || {
+            let capture = (|| -> Result<(), Box<dyn std::error::Error>> {
+                let ui = weak.upgrade().ok_or("preview window was closed")?;
+                let snapshot = ui.window().take_snapshot()?;
+                image::save_buffer_with_format(
+                    &path,
+                    snapshot.as_bytes(),
+                    snapshot.width(),
+                    snapshot.height(),
+                    image::ColorType::Rgba8,
+                    image::ImageFormat::Png,
+                )?;
+                Ok(())
+            })();
+            if let Err(error) = capture {
+                *result.borrow_mut() = Some(error.to_string());
+            }
+            let _ = slint::quit_event_loop();
+        });
+        ui.run()?;
+        if let Some(error) = snapshot_error.borrow_mut().take() {
+            return Err(error.into());
+        }
+        return Ok(());
+    }
+    ui.run()?;
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = std::env::args().collect::<Vec<_>>();
+    if arguments.iter().any(|arg| arg == "--preview") {
+        return preview_ui(&arguments);
+    }
     let Some(instance) = snappaste_lib::slint_support::single_instance::SingleInstance::acquire()?
     else {
         return Ok(());
@@ -988,14 +1169,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.window()
         .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
     let _instance_timer = start_single_instance_timer(&ui, state.clone(), instance);
-    let _auto_hide_timer = start_auto_hide_timer(&ui, state.clone());
+    install_auto_hide(&ui);
 
     tray.show()?;
     let arguments = std::env::args().collect::<Vec<_>>();
     let show_on_start = arguments.iter().any(|argument| argument == "--show")
         || (cfg!(debug_assertions) && !arguments.iter().any(|argument| argument == "--autostart"));
     if show_on_start {
-        show_main_window(&ui, &state);
+        let weak = ui.as_weak();
+        let state = state.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(ui) = weak.upgrade() {
+                show_main_window(&ui, &state);
+            }
+        })?;
     }
     slint::run_event_loop()?;
     GlobalHotKeyEvent::set_event_handler(None::<fn(GlobalHotKeyEvent)>);
@@ -1005,6 +1192,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_preserves_lines_and_truncates_unicode_without_changing_content() {
+        let mut record = ClipboardRecord {
+            id: 1,
+            content_type: ContentType::Text,
+            content: "第一行\n第二行".into(),
+            image_data: None,
+            created_at: String::new(),
+            is_favorite: false,
+            is_pinned: false,
+        };
+        assert_eq!(display_content(&record), record.content);
+        record.content = "文".repeat(101);
+        assert_eq!(display_content(&record), format!("{}…", "文".repeat(100)));
+        assert_eq!(record.content.chars().count(), 101);
+    }
 
     #[test]
     fn settings_draft_updates_visible_fields_and_keeps_hidden_ai_values() {
@@ -1050,3 +1254,7 @@ mod tests {
         assert!(parse_settings_draft(&previous, "Alt+Z", "sepia", "1", "100", false).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "ui_interaction_tests.rs"]
+mod ui_interaction_tests;

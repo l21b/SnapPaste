@@ -1,17 +1,20 @@
-import { AboutSlint, ListView } from "std-widgets.slint";
+import { ListView, ScrollView, Palette } from "std-widgets.slint";
 
 export global UiPalette {
     in-out property <bool> dark-mode: false;
-    out property <brush> window: dark-mode ? #1e1e28 : #f4f5f7;
-    out property <brush> header: dark-mode ? #20202b : #f7f8fa;
-    out property <brush> surface: dark-mode ? #272735 : #fbfbfc;
-    out property <brush> surface-strong: dark-mode ? #30303f : #ffffff;
-    out property <brush> hover: dark-mode ? #363647 : #e9ecf1;
+    changed dark-mode => { Palette.color-scheme = dark-mode ? ColorScheme.dark : ColorScheme.light; }
+    out property <brush> window: dark-mode ? #1e1e28df : #fffffff0;
+    out property <brush> header: window;
+    out property <brush> surface: dark-mode ? #282837b3 : #f8f9facc;
+    out property <brush> dialog: dark-mode ? #1e1e28f0 : #fffffff0;
+    out property <brush> surface-strong: dark-mode ? #1e1e28 : #ffffff;
+    out property <brush> hover: dark-mode ? #52525f99 : #f3f4f6bf;
+    out property <brush> row-hover: dark-mode ? #60a5fa24 : #2563eb14;
     out property <brush> pressed: dark-mode ? #404054 : #dde2e9;
-    out property <brush> text: dark-mode ? #f8f9fb : #15171a;
-    out property <brush> text-muted: dark-mode ? #a6adba : #66707e;
-    out property <brush> text-faint: dark-mode ? #777f90 : #929aa7;
-    out property <brush> border: dark-mode ? #393947 : #d7dbe2;
+    out property <brush> text: dark-mode ? #f9fafb : #000000;
+    out property <brush> text-muted: dark-mode ? #9ca3af : #646b77;
+    out property <brush> text-faint: dark-mode ? #a1a7b0 : #646b77;
+    out property <brush> border: dark-mode ? #37415180 : #d1d5dbb3;
     out property <brush> glass-border: dark-mode ? #ffffff18 : #ffffffcc;
     out property <brush> accent: dark-mode ? #60a5fa : #2563eb;
     out property <brush> accent-soft: dark-mode ? #60a5fa30 : #2563eb1f;
@@ -37,7 +40,6 @@ export component AppTray inherits SystemTrayIcon {
     tooltip: "SnapPaste";
     title: "SnapPaste";
 
-    callback open-requested();
     callback settings-requested();
     callback about-requested();
     callback quit-requested();
@@ -46,10 +48,6 @@ export component AppTray inherits SystemTrayIcon {
     clicked => { root.tray-clicked(); }
 
     Menu {
-        MenuItem {
-            title: "打开 SnapPaste";
-            activated => { root.open-requested(); }
-        }
         MenuItem {
             title: "设置";
             activated => { root.settings-requested(); }
@@ -66,90 +64,97 @@ export component AppTray inherits SystemTrayIcon {
     }
 }
 
+// Animate only the visual child: the pointer target stays fixed while it lifts/scales.
 component IconButton inherits Rectangle {
     in property <image> icon;
+    in property <image> hover-icon: root.icon;
     in property <brush> tint: UiPalette.text-muted;
+    in property <brush> hover-tint: UiPalette.accent;
+    in property <brush> hover-background: UiPalette.accent-soft;
     in property <bool> active: false;
     in property <bool> danger: false;
     in property <bool> enabled: true;
     callback clicked();
-
     width: 34px;
     height: 34px;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: button-touch.has-hover ? UiPalette.border : transparent;
-    background: root.active
-        ? UiPalette.amber-soft
-        : button-touch.pressed
-            ? UiPalette.pressed
-            : button-touch.has-hover
-                ? (root.danger ? UiPalette.danger-soft : UiPalette.hover)
-                : UiPalette.surface;
     opacity: root.enabled ? 1 : 0.42;
+    property <float> visual-scale: button-touch.pressed ? 0.96 : 1;
+    property <length> lift: button-touch.has-hover && !button-touch.pressed ? -1px : 0px;
+    animate visual-scale, lift { duration: 200ms; easing: ease; }
 
-    Image {
-        x: 8px;
-        y: 8px;
-        width: 18px;
-        height: 18px;
-        source: root.icon;
-        image-fit: contain;
-        colorize: root.active
-            ? UiPalette.amber
-            : button-touch.has-hover && root.danger
-                ? UiPalette.danger
-                : root.tint;
+    Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2 + root.lift;
+        width: root.width * root.visual-scale;
+        height: root.height * root.visual-scale;
+        border-radius: 10px * root.visual-scale;
+        border-width: 1px;
+        border-color: button-touch.has-hover ? UiPalette.border : transparent;
+        background: root.active || button-touch.has-hover
+            ? (root.danger ? UiPalette.danger-soft : root.hover-background)
+            : UiPalette.surface;
+        Image {
+            width: 18px * root.visual-scale;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: button-touch.has-hover && !root.active ? root.hover-icon : root.icon;
+            image-fit: contain;
+            colorize: root.active || button-touch.has-hover
+                ? (root.danger ? UiPalette.danger : root.hover-tint) : root.tint;
+            animate colorize { duration: 200ms; easing: ease; }
+        }
+        animate background, border-color { duration: 200ms; easing: ease; }
     }
-
     button-touch := TouchArea {
         enabled: root.enabled;
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
-
-    animate background { duration: 120ms; }
-    animate border-color { duration: 120ms; }
 }
 
 component RowIconButton inherits Rectangle {
     in property <image> icon;
     in property <brush> tint: UiPalette.text-muted;
     in property <bool> active: false;
+    in property <brush> active-tint: UiPalette.accent;
+    in property <brush> hover-background: UiPalette.accent-soft;
     in property <bool> danger: false;
     in property <bool> revealed: true;
     callback clicked();
-
     width: 28px;
     height: 28px;
-    border-radius: 7px;
     opacity: root.revealed ? 1 : 0;
-    background: button-touch.pressed
-        ? UiPalette.pressed
-        : button-touch.has-hover
-            ? (root.danger ? UiPalette.danger-soft : root.active ? UiPalette.amber-soft : UiPalette.accent-soft)
-            : transparent;
+    property <float> visual-scale: button-touch.pressed ? 0.95 : button-touch.has-hover ? 1.05 : 1;
+    property <length> lift: button-touch.has-hover && !button-touch.pressed ? -1px : 0px;
+    animate visual-scale, lift, opacity { duration: 160ms; easing: ease; }
 
-    Image {
-        x: 6px;
-        y: 6px;
-        width: 16px;
-        height: 16px;
-        source: root.icon;
-        image-fit: contain;
-        colorize: button-touch.has-hover && root.danger
-            ? UiPalette.danger
-            : root.active
-                ? UiPalette.amber
-                : root.tint;
+    Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2 + root.lift;
+        width: root.width * root.visual-scale;
+        height: root.height * root.visual-scale;
+        border-radius: 6px * root.visual-scale;
+        background: button-touch.has-hover
+            ? (root.danger ? UiPalette.danger-soft : root.hover-background) : transparent;
+        Image {
+            width: 16px * root.visual-scale;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: root.icon;
+            image-fit: contain;
+            colorize: button-touch.has-hover && root.danger ? UiPalette.danger
+                : root.active || button-touch.has-hover ? root.active-tint : root.tint;
+            animate colorize { duration: 160ms; easing: ease; }
+        }
+        animate background { duration: 160ms; easing: ease; }
     }
-
     button-touch := TouchArea {
         enabled: root.revealed;
+        mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
-
-    animate opacity { duration: 120ms; }
-    animate background { duration: 120ms; }
 }
 
 component DialogButton inherits Rectangle {
@@ -161,39 +166,49 @@ component DialogButton inherits Rectangle {
 
     height: 34px;
     min-width: 56px;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: root.primary
-        ? UiPalette.accent
-        : root.danger
-            ? UiPalette.danger
-            : UiPalette.border;
-    background: root.primary
-        ? (button-touch.pressed ? #1d4ed8 : button-touch.has-hover ? #3474eb : UiPalette.accent)
-        : root.danger
-            ? (button-touch.pressed ? #dc2626 : button-touch.has-hover ? #f35a5a : UiPalette.danger)
-            : button-touch.pressed
-                ? UiPalette.pressed
-                : button-touch.has-hover
-                    ? UiPalette.hover
-                    : UiPalette.surface;
     opacity: root.enabled ? 1 : 0.5;
+    // Animate the visual only so its hit target never moves under the pointer.
+    property <float> visual-scale: root.enabled && button-touch.pressed ? 0.97 : 1;
+    property <length> lift: root.enabled && button-touch.has-hover && !button-touch.pressed ? -1px : 0px;
+    animate visual-scale, lift { duration: 160ms; easing: ease; }
 
-    Text {
-        text: root.text;
-        color: root.primary || root.danger ? #ffffff : UiPalette.text;
-        font-size: 13px;
-        font-weight: 500;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2 + root.lift;
+        width: root.width * root.visual-scale;
+        height: root.height * root.visual-scale;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: root.primary
+            ? UiPalette.accent
+            : root.danger
+                ? UiPalette.danger
+                : UiPalette.border;
+        background: root.primary
+            ? (button-touch.pressed ? #1d4ed8 : button-touch.has-hover ? #3474eb : UiPalette.accent)
+            : root.danger
+                ? (button-touch.pressed ? #dc2626 : button-touch.has-hover ? #f35a5a : UiPalette.danger)
+                : button-touch.pressed
+                    ? UiPalette.pressed
+                    : button-touch.has-hover
+                        ? UiPalette.hover
+                        : UiPalette.surface;
+        Text {
+            text: root.text;
+            color: root.primary || root.danger ? #ffffff : UiPalette.text;
+            font-size: 13px;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        animate background, border-color { duration: 160ms; easing: ease; }
     }
-
     button-touch := TouchArea {
         enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
     }
-
-    animate background { duration: 120ms; }
 }
 
 component TextField inherits Rectangle {
@@ -253,12 +268,14 @@ component SearchField inherits Rectangle {
     in property <string> placeholder-text;
     in property <bool> enabled: true;
     callback edited(string);
+    callback interaction-requested();
+    public function focus-input() { editor.focus(); }
 
     height: 38px;
     border-width: 1px;
     border-radius: 10px;
     border-color: editor.has-focus ? UiPalette.accent : UiPalette.border;
-    background: UiPalette.surface-strong;
+    background: UiPalette.window;
     forward-focus: editor;
 
     if editor.has-focus: Rectangle {
@@ -285,7 +302,7 @@ component SearchField inherits Rectangle {
         width: parent.width - 48px;
         text: root.text == "" ? root.placeholder-text : "";
         color: UiPalette.text-muted;
-        font-size: 12px;
+        font-size: 13px;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -297,7 +314,7 @@ component SearchField inherits Rectangle {
         text <=> root.text;
         enabled: root.enabled;
         color: UiPalette.text;
-        font-size: 12px;
+        font-size: 13px;
         single-line: true;
         vertical-alignment: center;
         edited => { root.edited(self.text); }
@@ -313,6 +330,9 @@ component SearchField inherits Rectangle {
             root.edited("");
             editor.focus();
         }
+    }
+    if !root.enabled: TouchArea {
+        clicked => { root.interaction-requested(); editor.focus(); }
     }
 }
 
@@ -348,29 +368,65 @@ component ToggleSwitch inherits Rectangle {
     }
 }
 
-component SegmentButton inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected: false;
-    callback clicked();
-
-    height: 30px;
-    border-radius: 7px;
-    background: root.selected
-        ? UiPalette.surface-strong
-        : button-touch.has-hover
-            ? UiPalette.hover
-            : transparent;
-
-    Text {
-        text: root.text;
-        color: root.selected ? UiPalette.accent : UiPalette.text-muted;
-        font-size: 11px;
-        font-weight: root.selected ? 600 : 400;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+// Shared dropdown keeps both themes consistent instead of using the platform widget palette.
+component SelectField inherits Rectangle {
+    in property <[string]> options;
+    in property <string> value;
+    property <int> keyboard-index: -1;
+    callback selected(string);
+    height: 32px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: keys.has-focus ? UiPalette.accent : UiPalette.border;
+    background: UiPalette.surface;
+    forward-focus: keys;
+    Text { x: 9px; width: parent.width - 30px; text: root.value; color: UiPalette.text; font-size: 12px; vertical-alignment: center; overflow: elide; }
+    Image { x: parent.width - 23px; y: 9px; width: 14px; height: 14px; source: @image-url("icons/chevron-down.svg"); colorize: UiPalette.text-muted; }
+    TouchArea { clicked => { root.keyboard-index = -1; keys.focus(); popup.show(); } }
+    keys := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " || event.text == Key.DownArrow {
+                popup.show(); accept
+            } else { reject }
+        }
     }
-
-    button-touch := TouchArea { clicked => { root.clicked(); } }
+    popup := PopupWindow {
+        y: root.height + 2px;
+        width: root.width;
+        height: root.options.length * 32px + 8px;
+        close-policy: close-on-click-outside;
+        forward-focus: popup-keys;
+        popup-keys := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.DownArrow {
+                    root.keyboard-index = min(root.options.length - 1, root.keyboard-index + 1); accept
+                } else if event.text == Key.UpArrow {
+                    root.keyboard-index = max(0, root.keyboard-index - 1); accept
+                } else if event.text == Key.Return {
+                    if root.keyboard-index >= 0 { root.selected(root.options[root.keyboard-index]); }
+                    popup.close(); accept
+                } else if event.text == Key.Escape { popup.close(); accept }
+                else { reject }
+            }
+        }
+        Rectangle {
+            background: UiPalette.surface-strong;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: UiPalette.border;
+            VerticalLayout {
+                padding: 4px;
+                for option[index] in root.options: Rectangle {
+                    height: 32px;
+                    border-radius: 5px;
+                    background: touch.has-hover || (root.keyboard-index >= 0 ? index == root.keyboard-index : option == root.value) ? UiPalette.accent-soft : transparent;
+                    Text { x: 8px; width: parent.width - 16px; text: option; color: UiPalette.text; font-size: 12px; vertical-alignment: center; }
+                    touch := TouchArea { clicked => { root.selected(option); popup.close(); } }
+                }
+            }
+        }
+    }
 }
 
 component RecordRow inherits Rectangle {
@@ -380,100 +436,104 @@ component RecordRow inherits Rectangle {
     callback favorite-changed(string, bool);
     callback pinned-changed(string, bool);
 
-    height: root.item.has-image ? 98px : 72px;
-    background: row-touch.has-hover ? UiPalette.hover : transparent;
+    height: max(root.item.has-image ? 98px : 72px, content-text.y + content-text.preferred-height + 15px);
+    background: row-touch.has-hover ? UiPalette.row-hover : transparent;
 
     row-touch := TouchArea {
         clicked => { root.activate(root.item.id); }
-    }
 
-    Rectangle {
-        x: 16px;
-        y: 11px;
-        width: type-text.preferred-width + 14px;
-        height: 20px;
-        border-radius: 6px;
-        background: UiPalette.accent-soft;
+        Rectangle {
+            x: 16px;
+            y: 11px;
+            width: type-text.preferred-width + 14px;
+            height: 20px;
+            border-radius: 6px;
+            background: UiPalette.accent-soft;
 
-        type-text := Text {
-            x: 7px;
-            text: root.item.type-label;
-            color: UiPalette.accent;
-            font-size: 10px;
-            font-weight: 500;
-            vertical-alignment: center;
+            type-text := Text {
+                x: 7px;
+                text: root.item.type-label;
+                color: UiPalette.accent;
+                font-size: 10px;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
         }
-    }
 
-    if root.item.has-image: Rectangle {
-        x: 16px;
-        y: 38px;
-        width: 66px;
-        height: 48px;
-        border-radius: 6px;
-        border-width: 1px;
-        border-color: UiPalette.border;
-        background: UiPalette.surface;
+        if root.item.has-image: Rectangle {
+            x: 16px;
+            y: 38px;
+            width: 66px;
+            height: 48px;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: UiPalette.border;
+            background: UiPalette.surface;
 
-        Image {
-            x: 3px;
-            y: 3px;
-            width: parent.width - 6px;
-            height: parent.height - 6px;
-            source: root.item.thumbnail;
-            image-fit: contain;
+            Image {
+                x: 3px;
+                y: 3px;
+                width: parent.width - 6px;
+                height: parent.height - 6px;
+                source: root.item.thumbnail;
+                image-fit: contain;
+            }
         }
+
+        content-text := Text {
+            x: root.item.has-image ? 92px : 16px;
+            y: 38px;
+            width: root.item.has-image ? parent.width - 108px : parent.width - 32px;
+            height: self.preferred-height;
+            text: root.item.content;
+            color: UiPalette.text;
+            font-size: 13px;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: top;
+        }
+
+        pin-button := RowIconButton {
+            x: parent.width - 94px;
+            y: 7px;
+            icon: root.item.pinned ? @image-url("icons/pin-filled.svg") : @image-url("icons/pin.svg");
+            active: root.item.pinned;
+            tint: root.item.pinned ? UiPalette.accent : UiPalette.text-muted;
+            revealed: row-touch.has-hover || root.item.pinned;
+            clicked => { root.pinned-changed(root.item.id, !root.item.pinned); }
+        }
+
+        RowIconButton {
+            x: parent.width - 64px;
+            y: 7px;
+            icon: @image-url("icons/trash.svg");
+            danger: true;
+            revealed: row-touch.has-hover;
+            clicked => { root.remove(root.item.id); }
+        }
+
+        RowIconButton {
+            x: parent.width - 34px;
+            y: 7px;
+            icon: root.item.favorite ? @image-url("icons/star-filled.svg") : @image-url("icons/star.svg");
+            active: root.item.favorite;
+            active-tint: UiPalette.amber;
+            hover-background: UiPalette.amber-soft;
+            revealed: row-touch.has-hover || root.item.favorite;
+            clicked => { root.favorite-changed(root.item.id, !root.item.favorite); }
+        }
+
+        Rectangle {
+            x: 16px;
+            y: parent.height - 1px;
+            width: parent.width - 32px;
+            height: 1px;
+            background: UiPalette.border;
+        }
+
     }
 
-    Text {
-        x: root.item.has-image ? 92px : 16px;
-        y: 38px;
-        width: root.item.has-image ? parent.width - 108px : parent.width - 32px;
-        height: root.item.has-image ? 48px : 24px;
-        text: root.item.content;
-        color: UiPalette.text;
-        font-size: 13px;
-        wrap: word-wrap;
-        overflow: elide;
-        vertical-alignment: top;
-    }
-
-    pin-button := RowIconButton {
-        x: parent.width - 94px;
-        y: 7px;
-        icon: @image-url("icons/pin.svg");
-        active: root.item.pinned;
-        tint: root.item.pinned ? UiPalette.accent : UiPalette.text-muted;
-        revealed: row-touch.has-hover || root.item.pinned;
-        clicked => { root.pinned-changed(root.item.id, !root.item.pinned); }
-    }
-
-    RowIconButton {
-        x: parent.width - 64px;
-        y: 7px;
-        icon: @image-url("icons/trash.svg");
-        danger: true;
-        revealed: row-touch.has-hover;
-        clicked => { root.remove(root.item.id); }
-    }
-
-    RowIconButton {
-        x: parent.width - 34px;
-        y: 7px;
-        icon: root.item.favorite ? @image-url("icons/star-filled.svg") : @image-url("icons/star.svg");
-        active: root.item.favorite;
-        revealed: row-touch.has-hover || root.item.favorite;
-        clicked => { root.favorite-changed(root.item.id, !root.item.favorite); }
-    }
-
-    Rectangle {
-        y: parent.height - 1px;
-        width: 100%;
-        height: 1px;
-        background: UiPalette.border;
-    }
-
-    animate background { duration: 100ms; }
+    animate background { duration: 150ms; easing: ease; }
 }
 
 export component MainWindow inherits Window {
@@ -482,6 +542,8 @@ export component MainWindow inherits Window {
     no-frame: true;
     width: 264px;
     height: 421px;
+    default-font-family: "Segoe UI";
+    init => { Palette.color-scheme = UiPalette.dark-mode ? ColorScheme.dark : ColorScheme.light; }
     background: transparent;
 
     in property <[ClipboardItemData]> records;
@@ -493,6 +555,8 @@ export component MainWindow inherits Window {
     in property <string> app-version: "1.6.0";
 
     in-out property <string> settings-hotkey: "Alt+Z";
+    in-out property <string> settings-modifier: "Alt";
+    in-out property <string> settings-key: "Z";
     in-out property <string> settings-theme: "system";
     in-out property <string> settings-keep-days: "1";
     in-out property <string> settings-max-records: "500";
@@ -516,6 +580,8 @@ export component MainWindow inherits Window {
     callback project-requested();
     callback escape-requested();
     callback window-drag-requested();
+    callback interaction-requested();
+    public function focus-search() { search-field.focus-input(); }
 
     forward-focus: window-key-scope;
     window-key-scope := FocusScope {
@@ -544,9 +610,10 @@ export component MainWindow inherits Window {
             clip: true;
 
             VerticalLayout {
+                // The shell supplies the translucent background once for all sections.
                 header := Rectangle {
                     height: 63px;
-                    background: UiPalette.header;
+                    background: transparent;
 
                     drag-area := TouchArea {
                         pointer-event(event) => {
@@ -557,6 +624,8 @@ export component MainWindow inherits Window {
                     }
 
                     HorizontalLayout {
+                        padding-top: 14px;
+                        padding-bottom: 14px;
                         padding-left: 18px;
                         padding-right: 18px;
                         spacing: 8px;
@@ -573,13 +642,12 @@ export component MainWindow inherits Window {
                         IconButton {
                             icon: @image-url("icons/trash.svg");
                             danger: true;
-                            enabled: !root.focus-preserving;
-                            clicked => { root.active-panel = "clear"; }
+                            clicked => { root.interaction-requested(); root.active-panel = "clear"; }
                         }
                         IconButton {
                             icon: @image-url("icons/plus.svg");
-                            enabled: !root.focus-preserving;
                             clicked => {
+                                root.interaction-requested();
                                 root.favorite-draft = "";
                                 root.active-panel = "add";
                             }
@@ -587,6 +655,9 @@ export component MainWindow inherits Window {
                         IconButton {
                             icon: root.favorites-only ? @image-url("icons/star-filled.svg") : @image-url("icons/star.svg");
                             active: root.favorites-only;
+                            hover-icon: @image-url("icons/star-soft.svg");
+                            hover-tint: UiPalette.amber;
+                            hover-background: UiPalette.amber-soft;
                             clicked => { root.favorites-toggled(); }
                         }
                     }
@@ -601,17 +672,16 @@ export component MainWindow inherits Window {
 
                 search-area := Rectangle {
                     height: 68px;
-                    background: UiPalette.surface;
+                    background: transparent;
 
-                    SearchField {
+                    search-field := SearchField {
                         x: 18px;
                         y: 14px;
                         width: parent.width - 36px;
                         text <=> root.search-text;
                         enabled: !root.focus-preserving;
-                        placeholder-text: root.focus-preserving
-                            ? "点击记录即可粘贴"
-                            : root.records.length + " 条记录";
+                        placeholder-text: root.records.length + " 条记录";
+                        interaction-requested => { root.interaction-requested(); }
                         edited(value) => { root.search-changed(value); }
                     }
 
@@ -625,11 +695,23 @@ export component MainWindow inherits Window {
 
                 list-area := Rectangle {
                     vertical-stretch: 1;
-                    background: UiPalette.window;
+                    background: transparent;
 
                     if root.records.length == 0: VerticalLayout {
                         alignment: center;
                         spacing: 7px;
+                        Rectangle {
+                            height: 54px;
+                            Image {
+                                x: (parent.width - self.width) / 2;
+                                width: 42px;
+                                height: 42px;
+                                source: @image-url("icons/clipboard.svg");
+                                colorize: UiPalette.text-faint;
+                                opacity: 0.45;
+                                image-fit: contain;
+                            }
+                        }
                         Text {
                             text: root.favorites-only ? "暂无收藏" : "暂无历史记录";
                             color: UiPalette.text;
@@ -638,7 +720,7 @@ export component MainWindow inherits Window {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: root.favorites-only ? "点击星标收藏常用内容" : "复制内容后会自动记录";
+                            text: root.favorites-only ? "点击 + 来添加" : "复制内容后会自动记录";
                             color: UiPalette.text-faint;
                             font-size: 11px;
                             horizontal-alignment: center;
@@ -666,14 +748,14 @@ export component MainWindow inherits Window {
                 TouchArea { clicked => { root.active-panel = "main"; } }
 
                 if root.active-panel == "settings": Rectangle {
-                    x: 6px;
-                    y: 6px;
-                    width: parent.width - 12px;
-                    height: parent.height - 12px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: min(260px, parent.width * 0.92);
+                    height: min(380px, parent.height - 12px);
                     border-radius: 16px;
                     border-width: 1px;
                     border-color: UiPalette.glass-border;
-                    background: UiPalette.window;
+                    background: UiPalette.surface-strong;
                     drop-shadow-blur: 22px;
                     drop-shadow-offset-y: 8px;
                     drop-shadow-color: #0000004d;
@@ -681,9 +763,10 @@ export component MainWindow inherits Window {
                     TouchArea { }
 
                     settings-header := Rectangle {
+                        y: 0;
                         height: 45px;
                         width: 100%;
-                        background: UiPalette.header;
+                        background: transparent;
 
                         Text {
                             x: 13px;
@@ -714,103 +797,61 @@ export component MainWindow inherits Window {
                         y: 45px;
                         width: 100%;
                         height: parent.height - 92px;
-                        background: UiPalette.window;
+                        background: transparent;
 
-                        VerticalLayout {
-                            padding-left: 12px;
-                            padding-right: 12px;
-                            padding-top: 9px;
-                            padding-bottom: 8px;
-                            spacing: 6px;
-
-                            Text { text: "快捷键"; color: UiPalette.text; font-size: 11px; }
-                            TextField {
-                                text <=> root.settings-hotkey;
-                                placeholder-text: "例如 Alt+Z";
-                                centered: true;
-                            }
-
-                            Text { text: "主题"; color: UiPalette.text; font-size: 11px; }
-                            Rectangle {
-                                height: 32px;
-                                border-width: 1px;
-                                border-color: UiPalette.border;
-                                border-radius: 8px;
-                                background: UiPalette.surface;
+                        ScrollView {
+                            width: 100%;
+                            height: 100%;
+                            viewport-width: self.visible-width;
+                            VerticalLayout {
+                                padding: 12px;
+                                spacing: 6px;
+                                alignment: start;
+                                Text { text: "快捷键"; color: UiPalette.text; font-size: 12px; }
                                 HorizontalLayout {
-                                    padding: 1px;
-                                    spacing: 1px;
-                                    SegmentButton {
+                                    spacing: 6px;
+                                    SelectField {
                                         horizontal-stretch: 1;
-                                        text: "跟随系统";
-                                        selected: root.settings-theme == "system";
-                                        clicked => { root.settings-theme = "system"; }
+                                        options: ["Alt", "Ctrl", "Shift", "Ctrl+Alt", "Ctrl+Shift", "Alt+Shift", "Ctrl+Alt+Shift", "Super"];
+                                        value: root.settings-modifier;
+                                        selected(value) => { root.settings-modifier = value; root.settings-hotkey = value + "+" + root.settings-key; }
                                     }
-                                    SegmentButton {
-                                        horizontal-stretch: 1;
-                                        text: "浅色";
-                                        selected: root.settings-theme == "light";
-                                        clicked => { root.settings-theme = "light"; }
-                                    }
-                                    SegmentButton {
-                                        horizontal-stretch: 1;
-                                        text: "深色";
-                                        selected: root.settings-theme == "dark";
-                                        clicked => { root.settings-theme = "dark"; }
+                                    TextField {
+                                        width: 54px;
+                                        horizontal-stretch: 0;
+                                        text <=> root.settings-key;
+                                        centered: true;
+                                        placeholder-text: "Z";
+                                        edited(value) => { root.settings-hotkey = root.settings-modifier + "+" + value; }
                                     }
                                 }
-                            }
-
-                            HorizontalLayout {
-                                height: 59px;
-                                spacing: 7px;
-                                VerticalLayout {
-                                    spacing: 3px;
-                                    Text { text: "保留天数"; color: UiPalette.text; font-size: 11px; }
-                                    TextField { text <=> root.settings-keep-days; placeholder-text: "0"; }
-                                    Text { text: "0 为永久"; color: UiPalette.text-faint; font-size: 9px; }
+                                Text { text: "主题"; color: UiPalette.text; font-size: 12px; }
+                                SelectField {
+                                    options: ["跟随系统", "浅色", "深色"];
+                                    value: root.settings-theme == "light" ? "浅色" : root.settings-theme == "dark" ? "深色" : "跟随系统";
+                                    selected(value) => {
+                                        root.settings-theme = value == "浅色" ? "light" : value == "深色" ? "dark" : "system";
+                                    }
                                 }
-                                VerticalLayout {
-                                    spacing: 3px;
-                                    Text { text: "最大记录"; color: UiPalette.text; font-size: 11px; }
-                                    TextField { text <=> root.settings-max-records; placeholder-text: "0"; }
-                                    Text { text: "0 为无限"; color: UiPalette.text-faint; font-size: 9px; }
+                                Text { text: "记录保留天数"; color: UiPalette.text; font-size: 12px; }
+                                TextField { text <=> root.settings-keep-days; placeholder-text: "0"; }
+                                Text { text: "0 代表永久保存"; color: UiPalette.text-faint; font-size: 10px; }
+                                Text { text: "最大记录数"; color: UiPalette.text; font-size: 12px; }
+                                TextField { text <=> root.settings-max-records; placeholder-text: "0"; }
+                                Text { text: "0 代表无限制"; color: UiPalette.text-faint; font-size: 10px; }
+                                HorizontalLayout {
+                                    height: 31px;
+                                    Text { text: "开机启动"; color: UiPalette.text; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                    ToggleSwitch { checked <=> root.settings-auto-start; }
                                 }
-                            }
-
-                            HorizontalLayout {
-                                height: 31px;
-                                Text {
-                                    text: "开机启动";
-                                    color: UiPalette.text;
-                                    font-size: 11px;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
+                                Rectangle { height: 1px; background: UiPalette.border; }
+                                Text { text: "收藏导入导出"; color: UiPalette.text; font-size: 12px; }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    DialogButton { horizontal-stretch: 1; text: "导入"; clicked => { root.import-requested(); } }
+                                    DialogButton { horizontal-stretch: 1; text: "导出"; clicked => { root.export-requested(); } }
                                 }
-                                ToggleSwitch { checked <=> root.settings-auto-start; }
-                            }
-
-                            Rectangle { height: 1px; background: UiPalette.border; }
-                            Text { text: "收藏导入导出"; color: UiPalette.text; font-size: 11px; }
-                            HorizontalLayout {
-                                height: 32px;
-                                spacing: 7px;
-                                DialogButton {
-                                    horizontal-stretch: 1;
-                                    text: "导入";
-                                    clicked => { root.import-requested(); }
-                                }
-                                DialogButton {
-                                    horizontal-stretch: 1;
-                                    text: "导出";
-                                    clicked => { root.export-requested(); }
-                                }
-                            }
-                            Text {
-                                text: "JSON 增量合并，仅包含收藏内容";
-                                color: UiPalette.text-faint;
-                                font-size: 9px;
-                                overflow: elide;
+                                Text { text: "JSON 增量合并，仅包含收藏内容"; color: UiPalette.text-faint; font-size: 10px; wrap: word-wrap; }
                             }
                         }
                     }
@@ -820,8 +861,8 @@ export component MainWindow inherits Window {
                         y: parent.height - 47px;
                         width: 100%;
                         height: 47px;
-                        background: UiPalette.header;
-                        Rectangle { width: 100%; height: 1px; background: UiPalette.border; }
+                        background: transparent;
+                        Rectangle { y: 0; width: 100%; height: 1px; background: UiPalette.border; }
                         HorizontalLayout {
                             padding-left: 12px;
                             padding-right: 12px;
@@ -854,13 +895,13 @@ export component MainWindow inherits Window {
 
                 if root.active-panel == "add": Rectangle {
                     x: 16px;
-                    y: 100px;
+                    y: (parent.height - self.height) / 2;
                     width: parent.width - 32px;
                     height: 220px;
                     border-radius: 15px;
                     border-width: 1px;
                     border-color: UiPalette.glass-border;
-                    background: UiPalette.surface-strong;
+                    background: UiPalette.dialog;
                     drop-shadow-blur: 24px;
                     drop-shadow-offset-y: 8px;
                     drop-shadow-color: #0000004d;
@@ -909,13 +950,6 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
-                    }
-                    Text {
-                        x: 18px;
-                        y: 156px;
-                        text: "按 Ctrl+Enter 快速添加";
-                        color: UiPalette.text-faint;
-                        font-size: 10px;
                     }
                     DialogButton {
                         x: 94px;
@@ -986,10 +1020,10 @@ export component MainWindow inherits Window {
 
                 if root.active-panel == "about": Rectangle {
                     x: 16px;
-                    y: 40px;
+                    y: (parent.height - self.height) / 2;
                     width: parent.width - 32px;
-                    height: 342px;
-                    border-radius: 15px;
+                    height: 292px;
+                    border-radius: 18px;
                     border-width: 1px;
                     border-color: UiPalette.glass-border;
                     background: UiPalette.surface-strong;
@@ -998,75 +1032,97 @@ export component MainWindow inherits Window {
                     drop-shadow-color: #0000004d;
                     TouchArea { }
 
-                    VerticalLayout {
-                        padding: 16px;
-                        spacing: 8px;
+                    Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        y: 22px;
+                        width: 52px;
+                        height: 52px;
+                        border-radius: 12px;
+                        background: #ffffff;
+                        clip: true;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: @image-url("../icons/icon.png");
+                            image-fit: contain;
+                        }
+                    }
+                    Text {
+                        y: 84px;
+                        width: 100%;
+                        height: 26px;
+                        text: "SnapPaste";
+                        color: UiPalette.text;
+                        font-size: 20px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        y: 115px;
+                        width: 100%;
+                        height: 18px;
+                        text: "v" + root.app-version + "   ·   作者 21b";
+                        color: UiPalette.text-muted;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                    }
+                    Rectangle {
+                        x: 16px;
+                        y: 153px;
+                        width: parent.width - 32px;
+                        height: 56px;
+                        border-width: 1px;
+                        border-color: github-touch.has-hover ? UiPalette.accent : UiPalette.border;
+                        border-radius: 12px;
+                        background: github-touch.pressed ? UiPalette.pressed
+                            : github-touch.has-hover ? UiPalette.accent-soft : UiPalette.surface;
+                        Image {
+                            x: 12px;
+                            y: 16px;
+                            width: 24px;
+                            height: 24px;
+                            source: @image-url("icons/github.svg");
+                            colorize: UiPalette.text;
+                            image-fit: contain;
+                        }
                         Text {
-                            text: "SnapPaste";
+                            x: 47px;
+                            y: 10px;
+                            text: "GitHub";
                             color: UiPalette.text;
-                            font-size: 18px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
+                            font-size: 13px;
+                            font-weight: 600;
                         }
                         Text {
-                            text: "轻量、快速的 Windows 剪贴板工具";
+                            x: 47px;
+                            y: 30px;
+                            text: "l21b / SnapPaste";
                             color: UiPalette.text-muted;
                             font-size: 10px;
-                            horizontal-alignment: center;
                         }
-                        Text {
-                            text: "版本 v" + root.app-version + "  ·  作者 21b";
-                            color: UiPalette.text-muted;
-                            font-size: 10px;
-                            horizontal-alignment: center;
+                        Image {
+                            x: parent.width - 25px;
+                            y: 22px;
+                            width: 12px;
+                            height: 12px;
+                            source: @image-url("icons/external.svg");
+                            colorize: github-touch.has-hover ? UiPalette.accent : UiPalette.text-muted;
                         }
-                        Rectangle {
-                            height: 31px;
-                            border-width: 1px;
-                            border-color: UiPalette.border;
-                            border-radius: 8px;
-                            background: UiPalette.surface;
-                            Text {
-                                x: 9px;
-                                width: parent.width - 34px;
-                                text: "github.com/l21b/SnapPaste";
-                                color: UiPalette.text-muted;
-                                font-size: 10px;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
-                            Image {
-                                x: parent.width - 25px;
-                                y: 8px;
-                                width: 14px;
-                                height: 14px;
-                                source: @image-url("icons/external.svg");
-                                colorize: UiPalette.text-muted;
-                            }
-                            TouchArea { clicked => { root.project-requested(); } }
+                        github-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.project-requested(); }
                         }
-                        Rectangle {
-                            height: 94px;
-                            border-width: 1px;
-                            border-color: UiPalette.border;
-                            border-radius: 8px;
-                            background: UiPalette.surface;
-                            clip: true;
-                            AboutSlint { }
-                        }
-                        Text {
-                            text: "界面由 Slint 驱动，数据只保存在本机";
-                            color: UiPalette.text-faint;
-                            font-size: 9px;
-                            horizontal-alignment: center;
-                        }
-                        Rectangle { vertical-stretch: 1; }
-                        DialogButton {
-                            height: 34px;
-                            text: "知道了";
-                            primary: true;
-                            clicked => { root.active-panel = "main"; }
-                        }
+                        animate background, border-color { duration: 160ms; easing: ease; }
+                    }
+                    DialogButton {
+                        x: 16px;
+                        y: 236px;
+                        width: parent.width - 32px;
+                        height: 36px;
+                        text: "知道了";
+                        primary: true;
+                        clicked => { root.active-panel = "main"; }
                     }
                 }
             }

@@ -14,7 +14,7 @@ name = "SnapPaste"
 path = "src/bin/snappaste_slint.rs"
 
 [build-dependencies]
-slint-build = "1.17.1"
+slint-build = "=1.17.1"
 winresource = "0.1"
 
 [dependencies]
@@ -30,6 +30,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Threading",
@@ -38,9 +39,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Shell",
 ] }
 clipboard-master = "4"
-slint = { version = "1.17.1", default-features = false, features = [
+slint = { version = "=1.17.1", default-features = false, features = [
     "std",
     "backend-winit",
+    "unstable-winit-030",
     "renderer-software",
     "system-tray",
     "raw-window-handle-06",
@@ -59,3 +61,11 @@ opt-level = "s"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[patch.crates-io]
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }
+i-slint-renderer-software = { path = "vendor/i-slint-renderer-software" }
+softbuffer = { path = "vendor/softbuffer" }
+
+[dev-dependencies]
+softbuffer = "=0.4.8"
