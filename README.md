@@ -1,5 +1,7 @@
 # SnapPaste
 
+English | [简体中文](README.zh-CN.md)
+
 A lightweight clipboard history tool built with Rust + Slint, quick access, fast search, and instant paste.
 
 
