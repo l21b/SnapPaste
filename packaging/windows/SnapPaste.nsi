@@ -4,7 +4,7 @@ Unicode true
 !include "MUI2.nsh"
 
 !ifndef APP_VERSION
-  !define APP_VERSION "1.6.0"
+  !define APP_VERSION "1.6.1"
 !endif
 
 !define PRODUCT_NAME "SnapPaste"

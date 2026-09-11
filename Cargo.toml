@@ -1,6 +1,6 @@
 [package]
 name = "SnapPaste"
-version = "1.6.0"
+version = "1.6.1"
 description = "Easy Clipboard"
 authors = ["21b"]
 edition = "2024"
