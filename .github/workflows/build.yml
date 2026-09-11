@@ -123,9 +123,13 @@ jobs:
           $makeNsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
 
           $installerScript = (Resolve-Path 'packaging\windows\SnapPaste.nsi').Path
-          & $makeNsis "/DAPP_VERSION=$version" $installerScript
+          & $makeNsis '/INPUTCHARSET' 'UTF8' "/DAPP_VERSION=$version" $installerScript
           if ($LASTEXITCODE -ne 0) {
             throw "NSIS failed with exit code $LASTEXITCODE."
+          }
+          $installerInfo = (Get-Item $installer).VersionInfo
+          if ($installerInfo.FileDescription -ne 'SnapPaste 安装程序' -or $installerInfo.FileVersion -ne $version) {
+            throw 'Installer encoding or version metadata is incorrect.'
           }
 
           Compress-Archive -Path "$releaseDir/SnapPaste.exe" -DestinationPath $portable -Force
