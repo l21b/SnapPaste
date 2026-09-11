@@ -2,6 +2,11 @@ name: SnapPaste CI/CD
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing version tag to rebuild and package (leave empty for checks only)'
+        required: false
+        type: string
   push:
     branches: [main]
     tags:
@@ -14,8 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ github.workflow }}-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && inputs.release_tag == '' }}
 
 env:
   CARGO_INCREMENTAL: 0
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -43,13 +50,20 @@ jobs:
           cache-on-failure: false
 
       - name: Verify release tag matches Cargo version
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           $version = (Select-String -Path 'Cargo.toml' -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
-          $tagVersion = '${{ github.ref_name }}'.TrimStart('v')
+          if ($env:RELEASE_TAG -notmatch '^v?\d+\.\d+\.\d+$') {
+            throw "Invalid release tag '$env:RELEASE_TAG'."
+          }
+          git show-ref --verify "refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Release requires an existing version tag.' }
+          $tagVersion = $env:RELEASE_TAG.TrimStart('v')
           if ($tagVersion -ne $version) {
-            throw "Tag '${{ github.ref_name }}' does not match Cargo version '$version'."
+            throw "Tag '$env:RELEASE_TAG' does not match Cargo version '$version'."
           }
 
       - name: Check formatting
@@ -64,10 +78,19 @@ jobs:
       - name: Verify release build
         run: cargo build --release --locked
 
+      - name: Preserve verified release executable
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-executable
+          path: target/release/SnapPaste.exe
+          if-no-files-found: error
+          retention-days: 1
+
   build-and-release:
     name: Build Windows release
     needs: windows-quality
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:
@@ -76,18 +99,14 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
         with:
-          workspaces: './ -> target'
-          cache-on-failure: false
+          ref: ${{ inputs.release_tag || github.ref }}
 
-      - name: Build release executable
-        run: cargo build --release --locked
+      - name: Download verified release executable
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-executable
+          path: target/release
 
       - name: Install NSIS
         shell: pwsh
@@ -103,7 +122,8 @@ jobs:
           $checksums = "$releaseDir/SHA256SUMS.txt"
           $makeNsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
 
-          & $makeNsis "/DAPP_VERSION=$version" 'packaging\windows\SnapPaste.nsi'
+          $installerScript = (Resolve-Path 'packaging\windows\SnapPaste.nsi').Path
+          & $makeNsis "/DAPP_VERSION=$version" $installerScript
           if ($LASTEXITCODE -ne 0) {
             throw "NSIS failed with exit code $LASTEXITCODE."
           }
@@ -120,8 +140,8 @@ jobs:
             target/release/SnapPaste-*-windows-x64-portable.zip
             target/release/SnapPaste-*-setup.exe
             target/release/SHA256SUMS.txt
-          tag_name: ${{ github.ref_name }}
-          name: SnapPaste ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: SnapPaste ${{ inputs.release_tag || github.ref_name }}
           draft: true
           prerelease: false
           generate_release_notes: true
